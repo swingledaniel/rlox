@@ -119,6 +119,7 @@ impl<'a> Scanner<'a> {
                     self.scan_identifier();
                 } else {
                     error(self.line, "Unexpected character.");
+                    self.text.pop();
                     return true;
                 }
             }
