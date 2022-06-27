@@ -102,6 +102,7 @@ impl<'a> Scanner<'a> {
                             break;
                         }
                         self.source.next();
+                        self.text.clear();
                     }
                 } else {
                     self.add_token(Slash);
@@ -110,7 +111,10 @@ impl<'a> Scanner<'a> {
             ' ' | '\r' | '\t' => {
                 self.text.pop();
             }
-            '\n' => self.line += 1,
+            '\n' => {
+                self.line += 1;
+                self.text.pop();
+            }
             '"' => self.scan_string(),
             _ => {
                 if self.is_digit(c) {
@@ -148,7 +152,6 @@ impl<'a> Scanner<'a> {
         self.source.next();
 
         self.text.remove(0);
-        self.text.pop();
         self.add_token(StringToken);
     }
 
