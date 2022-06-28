@@ -33,28 +33,22 @@ impl fmt::Display for Token {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expr::Binary(Binary {
+            Expr::Binary {
                 left,
                 operator,
                 right,
-            }) => {
+            } => {
                 write!(f, "({} {} {})", operator, left, right)
             }
-            Expr::Grouping(Grouping { expression }) => {
+            Expr::Grouping { expression } => {
                 write!(f, "(group {})", expression)
             }
-            Expr::LiteralExpr(LiteralExpr { value }) => {
+            Expr::LiteralExpr { value } => {
                 write!(f, "{}", value)
             }
-            Expr::Unary(Unary { operator, right }) => {
+            Expr::Unary { operator, right } => {
                 write!(f, "({} {})", operator, right)
             }
         }
-    }
-}
-
-impl fmt::Display for Unary {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({} {})", self.operator.lexeme, self.right)
     }
 }

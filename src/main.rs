@@ -1,3 +1,5 @@
+mod ast_display;
+mod expr;
 mod scanner;
 mod token;
 mod token_type;
@@ -9,7 +11,6 @@ use std::io::stdin;
 use std::process;
 
 use scanner::Scanner;
-use token::Token;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

@@ -4,9 +4,9 @@ use std::iter::Peekable;
 use std::mem;
 use std::str::Chars;
 
-use crate::token::Literal;
+use crate::error;
+use crate::token::{Literal, Token};
 use crate::token_type::TokenType::{self, *};
-use crate::{error, Token};
 
 lazy_static! {
     static ref KEYWORDS: HashMap<&'static str, TokenType> = HashMap::from([
