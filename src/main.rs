@@ -54,9 +54,6 @@ fn run(source: &str) -> bool {
     let scanner = Scanner::new(source);
     let (tokens, had_error) = scanner.scan_tokens();
 
-    for token in tokens.iter() {
-        println!("{:?}", token);
-    }
     match parser::parse(tokens) {
         Ok(expr) => println!("{}", expr),
         Err((token, message)) => println!("{}, {}", token, message),

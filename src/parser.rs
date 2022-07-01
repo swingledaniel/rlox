@@ -172,12 +172,7 @@ fn primary(
             _ => Err((token.clone(), "Expect expression.")),
         },
         None => Err((
-            Token {
-                typ: Eof,
-                lexeme: String::new(),
-                literal: Literal::None,
-                line: 0,
-            },
+            generate_eof(line_count),
             "Expect expression, instead found end of file.",
         )),
     }

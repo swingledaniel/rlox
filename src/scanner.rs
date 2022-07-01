@@ -54,12 +54,12 @@ impl<'a> Scanner<'a> {
             had_error |= self.scan_token(c);
         }
 
-        self.tokens.push(Token {
-            typ: Eof,
-            lexeme: String::new(),
-            literal: Literal::None,
-            line: self.line,
-        });
+        // self.tokens.push(Token {
+        //     typ: Eof,
+        //     lexeme: String::new(),
+        //     literal: Literal::None,
+        //     line: self.line,
+        // });
         (self.tokens, had_error)
     }
 
