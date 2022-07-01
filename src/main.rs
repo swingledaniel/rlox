@@ -1,5 +1,6 @@
 mod ast_display;
 mod expr;
+mod parser;
 mod scanner;
 mod token;
 mod token_type;
@@ -56,6 +57,10 @@ fn run(source: &str) -> bool {
     for token in tokens.iter() {
         println!("{:?}", token);
     }
+    match parser::parse(tokens) {
+        Ok(expr) => println!("{}", expr),
+        Err((token, message)) => println!("{}, {}", token, message),
+    };
 
     had_error
 }

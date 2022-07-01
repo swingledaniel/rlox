@@ -14,6 +14,9 @@ impl fmt::Display for Literal {
             Literal::StringLiteral(s) => {
                 write!(f, "{}", s)
             }
+            Literal::BoolLiteral(b) => {
+                write!(f, "{}", b)
+            }
             Literal::F64(float) => {
                 write!(f, "{}", float)
             }
