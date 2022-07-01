@@ -155,7 +155,7 @@ fn primary(
             LeftParen => {
                 let expr = expression(line_count, tokens);
 
-                match tokens.peek() {
+                match tokens.next() {
                     Some(next_token) => match next_token.typ {
                         RightParen => Ok(Expr::Grouping {
                             expression: Box::new(expr?),
