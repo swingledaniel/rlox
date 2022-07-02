@@ -9,7 +9,7 @@ mod token_type;
 use std::env;
 use std::error::Error;
 use std::fs;
-use std::io::stdin;
+use std::io::{stdin, stdout, Write};
 use std::process;
 
 use interpreter::interpret;
@@ -46,6 +46,7 @@ fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
 fn run_prompt() {
     loop {
         print!("> ");
+        stdout().flush().unwrap();
         let mut input = String::new();
         stdin().read_line(&mut input).expect("Input invalid");
         if input.is_empty() {
@@ -81,5 +82,5 @@ fn report(line: usize, location: &str, message: &str) {
 }
 
 fn runtime_error(line: usize, message: &str) {
-    println!("{}\n[line {}]", line, message);
+    println!("{}\n[line {}]", message, line);
 }

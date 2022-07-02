@@ -30,7 +30,12 @@ pub fn parse(tokens: Vec<Token>) -> Result<Expr, (Token, &'static str)> {
         None => 0,
     };
 
-    expression(line_count, &mut tokens.iter().peekable())
+    let token_iter = &mut tokens.iter().peekable();
+    let expr = expression(line_count, token_iter)?;
+    match token_iter.next() {
+        Some(token) => Err((token.to_owned(), "Expected end of file instead.")),
+        None => Ok(expr),
+    }
 }
 
 fn expression(

@@ -88,11 +88,11 @@ impl<'a> Scanner<'a> {
                 self.add_token(if matched { EqualEqual } else { Equal })
             }
             '<' => {
-                let matched = self.match_next('<');
+                let matched = self.match_next('=');
                 self.add_token(if matched { LessEqual } else { Less })
             }
             '>' => {
-                let matched = self.match_next('>');
+                let matched = self.match_next('=');
                 self.add_token(if matched { GreaterEqual } else { Greater })
             }
             '/' => {
@@ -222,6 +222,7 @@ impl<'a> Scanner<'a> {
             return false;
         }
 
+        self.source.next();
         self.text.push(expected);
         true
     }
