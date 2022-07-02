@@ -1,5 +1,6 @@
 mod ast_display;
 mod expr;
+mod interpreter;
 mod parser;
 mod scanner;
 mod token;
@@ -11,6 +12,7 @@ use std::fs;
 use std::io::stdin;
 use std::process;
 
+use interpreter::interpret;
 use scanner::Scanner;
 
 fn main() {
@@ -29,10 +31,13 @@ fn main() {
 
 fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
     let text: String = fs::read_to_string(path)?.parse()?;
-    let had_error = run(&text);
+    let (had_error, had_runtime_error) = run(&text);
 
     if had_error {
         process::exit(65);
+    }
+    if had_runtime_error {
+        process::exit(70);
     }
 
     Ok(())
@@ -50,16 +55,21 @@ fn run_prompt() {
     }
 }
 
-fn run(source: &str) -> bool {
+fn run(source: &str) -> (bool, bool) {
     let scanner = Scanner::new(source);
     let (tokens, had_error) = scanner.scan_tokens();
 
-    match parser::parse(tokens) {
-        Ok(expr) => println!("{}", expr),
-        Err((token, message)) => println!("{}, {}", token, message),
-    };
+    if had_error {
+        return (had_error, false);
+    }
 
-    had_error
+    match parser::parse(tokens) {
+        Ok(expr) => (false, interpret(expr)),
+        Err((token, message)) => {
+            println!("Parse error: {}, {}", token, message);
+            (true, false)
+        }
+    }
 }
 
 fn error(line: usize, message: &str) {
@@ -68,4 +78,8 @@ fn error(line: usize, message: &str) {
 
 fn report(line: usize, location: &str, message: &str) {
     println!("[line {}] Error{}: {}", line, location, message);
+}
+
+fn runtime_error(line: usize, message: &str) {
+    println!("{}\n[line {}]", line, message);
 }

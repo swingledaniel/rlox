@@ -30,7 +30,6 @@ pub fn parse(tokens: Vec<Token>) -> Result<Expr, (Token, &'static str)> {
         None => 0,
     };
 
-    // TODO: check result for errors
     expression(line_count, &mut tokens.iter().peekable())
 }
 
@@ -159,20 +158,20 @@ fn primary(
                         RightParen => Ok(Expr::Grouping {
                             expression: Box::new(expr?),
                         }),
-                        _ => error(line_count, tokens, "Expect ')' after expression."),
+                        _ => error(line_count, tokens, "Expected ')' after expression."),
                     },
                     None => error(
                         line_count,
                         tokens,
-                        "Expect ')' after expression, instead found end of file.",
+                        "Expected ')' after expression, instead found end of file.",
                     ),
                 }
             }
-            _ => Err((token.clone(), "Expect expression.")),
+            _ => Err((token.clone(), "Expected expression.")),
         },
         None => Err((
             generate_eof(line_count),
-            "Expect expression, instead found end of file.",
+            "Expected expression, instead found end of file.",
         )),
     }
 }
