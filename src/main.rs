@@ -3,6 +3,7 @@ mod expr;
 mod interpreter;
 mod parser;
 mod scanner;
+mod stmt;
 mod token;
 mod token_type;
 
@@ -65,7 +66,7 @@ fn run(source: &str) -> (bool, bool) {
     }
 
     match parser::parse(tokens) {
-        Ok(expr) => (false, interpret(expr)),
+        Ok(statements) => (false, interpret(statements)),
         Err((token, message)) => {
             println!("Parse error: {}, {}", token, message);
             (true, false)

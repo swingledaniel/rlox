@@ -1,19 +1,20 @@
 use crate::runtime_error;
+use crate::stmt::Stmt;
 use crate::token::{Literal::*, Token};
 use crate::token_type::TokenType;
 use crate::{expr::*, token::Literal};
 
-pub fn interpret(expr: Expr) -> bool {
-    match expr.interpret() {
-        Ok(literal) => {
-            println!("{}", stringify(literal));
-            false
-        }
-        Err((token, message)) => {
-            runtime_error(token.line, message);
-            true
-        }
+pub fn interpret(statements: Vec<Stmt>) -> bool {
+    for statement in statements.into_iter() {
+        match statement.interpret() {
+            Err((token, message)) => {
+                runtime_error(token.line, message);
+                return true;
+            }
+            _ => {}
+        };
     }
+    false
 }
 
 fn stringify(literal: Literal) -> String {
@@ -34,6 +35,21 @@ fn stringify(literal: Literal) -> String {
 
 trait Interpreter {
     fn interpret(self) -> Result<Literal, (Token, &'static str)>;
+}
+
+impl Interpreter for Stmt {
+    fn interpret(self) -> Result<Literal, (Token, &'static str)> {
+        match self {
+            Stmt::Print { expression } => {
+                let literal = expression.interpret()?;
+                println!("{}", stringify(literal));
+            }
+            Stmt::Expression { expression } => {
+                expression.interpret()?;
+            }
+        };
+        Ok(Literal::None)
+    }
 }
 
 impl Interpreter for Expr {

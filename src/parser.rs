@@ -2,6 +2,7 @@ use std::iter::Peekable;
 use std::slice::Iter;
 
 use crate::report;
+use crate::stmt::Stmt;
 use crate::token::Literal;
 use crate::token_type::TokenType::*;
 use crate::{expr::Expr, token::Token};
@@ -24,17 +25,72 @@ macro_rules! match_types {
     };
 }
 
-pub fn parse(tokens: Vec<Token>) -> Result<Expr, (Token, &'static str)> {
+pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, (Token, &'static str)> {
     let line_count = match tokens.last() {
         Some(token) => token.line,
         None => 0,
     };
 
     let token_iter = &mut tokens.iter().peekable();
-    let expr = expression(line_count, token_iter)?;
-    match token_iter.next() {
-        Some(token) => Err((token.to_owned(), "Expected end of file instead.")),
-        None => Ok(expr),
+
+    let mut statements = Vec::new();
+    while token_iter.peek().is_some() {
+        statements.push(statement(line_count, token_iter)?);
+    }
+
+    Ok(statements)
+}
+
+fn statement(
+    line_count: usize,
+    tokens: &mut Peekable<Iter<Token>>,
+) -> Result<Stmt, (Token, &'static str)> {
+    match tokens.peek().unwrap().typ {
+        Print => print_statement(line_count, tokens),
+        _ => expression_statement(line_count, tokens),
+    }
+}
+
+fn print_statement(
+    line_count: usize,
+    tokens: &mut Peekable<Iter<Token>>,
+) -> Result<Stmt, (Token, &'static str)> {
+    tokens.next();
+    let value = expression(line_count, tokens)?;
+
+    match tokens.next() {
+        Some(next_token) => match next_token.typ {
+            Semicolon => Ok(Stmt::Print {
+                expression: Box::new(value),
+            }),
+            _ => Err(error(line_count, tokens, "Expected ';' after value.")),
+        },
+        None => Err(error(
+            line_count,
+            tokens,
+            "Expected ';' after value, instead found end of file.",
+        )),
+    }
+}
+
+fn expression_statement(
+    line_count: usize,
+    tokens: &mut Peekable<Iter<Token>>,
+) -> Result<Stmt, (Token, &'static str)> {
+    let expression = expression(line_count, tokens)?;
+
+    match tokens.next() {
+        Some(next_token) => match next_token.typ {
+            Semicolon => Ok(Stmt::Expression {
+                expression: Box::new(expression),
+            }),
+            _ => Err(error(line_count, tokens, "Expected ';' after expression.")),
+        },
+        None => Err(error(
+            line_count,
+            tokens,
+            "Expected ';' after expression, instead found end of file.",
+        )),
     }
 }
 
@@ -163,13 +219,13 @@ fn primary(
                         RightParen => Ok(Expr::Grouping {
                             expression: Box::new(expr?),
                         }),
-                        _ => error(line_count, tokens, "Expected ')' after expression."),
+                        _ => Err(error(line_count, tokens, "Expected ')' after expression.")),
                     },
-                    None => error(
+                    None => Err(error(
                         line_count,
                         tokens,
                         "Expected ')' after expression, instead found end of file.",
-                    ),
+                    )),
                 }
             }
             _ => Err((token.clone(), "Expected expression.")),
@@ -185,15 +241,15 @@ fn error(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     message: &'static str,
-) -> Result<Expr, (Token, &'static str)> {
+) -> (Token, &'static str) {
     match tokens.next() {
         Some(token) => {
             report(token.line, &format!(" at '{}'", token.lexeme), message);
-            Err((token.clone(), message))
+            (token.clone(), message)
         }
         None => {
             report(line_count, " at end", message);
-            Err((generate_eof(line_count), message))
+            (generate_eof(line_count), message)
         }
     }
 }
