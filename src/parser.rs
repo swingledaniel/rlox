@@ -3,8 +3,26 @@ use std::slice::Iter;
 
 use crate::report;
 use crate::token::Literal;
-use crate::token_type::TokenType::{self, *};
+use crate::token_type::TokenType::*;
 use crate::{expr::Expr, token::Token};
+
+// parameters: token iterator, and a series of TokenType variants separated by |
+// return option of next token
+macro_rules! match_types {
+    ($tokens:ident, $( $variant:pat_param )|* ) => {
+        match $tokens.peek() {
+            Some(token) => {
+                match token.typ {
+                    $(
+                        $variant
+                    )|* => $tokens.next(),
+                    _ => None,
+                }
+            },
+            None => None,
+        }
+    };
+}
 
 pub fn parse(tokens: Vec<Token>) -> Result<Expr, (Token, &'static str)> {
     let line_count = match tokens.last() {
@@ -29,7 +47,7 @@ fn equality(
 ) -> Result<Expr, (Token, &'static str)> {
     let mut expr = comparison(line_count, tokens);
 
-    while let Some(operator) = match_types(tokens, &[BangEqual, EqualEqual]) {
+    while let Some(operator) = match_types!(tokens, BangEqual | EqualEqual) {
         let operator = operator.to_owned();
         let right = comparison(line_count, tokens);
         expr = Ok(Expr::Binary {
@@ -42,32 +60,13 @@ fn equality(
     expr
 }
 
-fn match_types<'a>(
-    tokens: &'a mut Peekable<Iter<Token>>,
-    types: &[TokenType],
-) -> Option<&'a Token> {
-    for &t in types {
-        if check(tokens, t) {
-            return tokens.next();
-        }
-    }
-    None
-}
-
-fn check(tokens: &mut Peekable<Iter<Token>>, typ: TokenType) -> bool {
-    match tokens.peek() {
-        Some(token) => typ == token.typ,
-        None => false,
-    }
-}
-
 fn comparison(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
 ) -> Result<Expr, (Token, &'static str)> {
     let mut expr = term(line_count, tokens)?;
 
-    while let Some(operator) = match_types(tokens, &[Greater, GreaterEqual, Less, LessEqual]) {
+    while let Some(operator) = match_types!(tokens, Greater | GreaterEqual | Less | LessEqual) {
         let operator = operator.to_owned();
         let right = term(line_count, tokens)?;
         expr = Expr::Binary {
@@ -86,7 +85,7 @@ fn term(
 ) -> Result<Expr, (Token, &'static str)> {
     let mut expr = factor(line_count, tokens);
 
-    while let Some(operator) = match_types(tokens, &[Minus, Plus]) {
+    while let Some(operator) = match_types!(tokens, Minus | Plus) {
         let operator = operator.to_owned();
         let right = factor(line_count, tokens);
         expr = Ok(Expr::Binary {
@@ -105,7 +104,7 @@ fn factor(
 ) -> Result<Expr, (Token, &'static str)> {
     let mut expr = unary(line_count, tokens);
 
-    while let Some(operator) = match_types(tokens, &[Slash, Star]) {
+    while let Some(operator) = match_types!(tokens, Slash | Star) {
         let operator = operator.to_owned();
         let right = unary(line_count, tokens);
         expr = Ok(Expr::Binary {
@@ -122,7 +121,7 @@ fn unary(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
 ) -> Result<Expr, (Token, &'static str)> {
-    if let Some(operator) = match_types(tokens, &[Bang, Minus]) {
+    if let Some(operator) = match_types!(tokens, Bang | Minus) {
         let operator = operator.to_owned();
         let right = unary(line_count, tokens);
         Ok(Expr::Unary {
