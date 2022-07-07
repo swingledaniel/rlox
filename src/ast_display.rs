@@ -52,6 +52,13 @@ impl fmt::Display for Expr {
             Expr::LiteralExpr { value } => {
                 write!(f, "{value}")
             }
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => {
+                write!(f, "{left} {operator} {right}")
+            }
             Expr::Unary { operator, right } => {
                 write!(f, "({operator} {right})")
             }

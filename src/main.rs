@@ -89,6 +89,6 @@ fn report(line: usize, location: &str, message: &str) {
     println!("[line {}] Error{}: {}", line, location, message);
 }
 
-fn runtime_error(line: usize, message: Soo) {
+fn runtime_error(line: usize, message: &mut Soo) {
     println!("{}\n[line {}]", message, line);
 }

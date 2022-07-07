@@ -13,8 +13,8 @@ impl From<&'static str> for Soo {
 }
 
 pub fn interpret(statements: Vec<Stmt>, environment: &mut Environment) -> bool {
-    for statement in statements.into_iter() {
-        match statement.interpret(environment) {
+    for mut statement in statements.into_iter() {
+        match &mut statement.interpret(environment) {
             Err((token, message)) => {
                 runtime_error(token.line, message);
                 return true;
@@ -42,17 +42,28 @@ fn stringify(literal: Literal) -> String {
 }
 
 trait Interpreter {
-    fn interpret(self, environment: &mut Environment) -> Result<Literal, (Token, Soo)>;
+    fn interpret(&mut self, environment: &mut Environment) -> Result<Literal, (Token, Soo)>;
 }
 
 impl Interpreter for Stmt {
-    fn interpret(self, environment: &mut Environment) -> Result<Literal, (Token, Soo)> {
+    fn interpret(&mut self, environment: &mut Environment) -> Result<Literal, (Token, Soo)> {
         match self {
             Stmt::Block { statements } => {
                 execute_block(statements, environment)?;
             }
             Stmt::Expression { expression } => {
                 expression.interpret(environment)?;
+            }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                if is_truthy(&condition.interpret(environment)?) {
+                    then_branch.interpret(environment)?;
+                } else if let Some(else_stmt) = else_branch {
+                    else_stmt.interpret(environment)?;
+                }
             }
             Stmt::Print { expression } => {
                 let literal = expression.interpret(environment)?;
@@ -65,13 +76,18 @@ impl Interpreter for Stmt {
                 };
                 environment.define(&name.lexeme, value);
             }
+            Stmt::While { condition, body } => {
+                while is_truthy(&condition.interpret(environment)?) {
+                    body.interpret(environment)?;
+                }
+            }
         };
         Ok(Literal::None)
     }
 }
 
 impl Interpreter for Expr {
-    fn interpret(self, environment: &mut Environment) -> Result<Literal, (Token, Soo)> {
+    fn interpret(&mut self, environment: &mut Environment) -> Result<Literal, (Token, Soo)> {
         match self {
             Expr::Assign { name, value } => {
                 let literal = value.interpret(environment)?;
@@ -90,7 +106,7 @@ impl Interpreter for Expr {
                         (F64(f1), F64(f2)) => Ok(F64(f1 + f2)),
                         (StringLiteral(s1), StringLiteral(s2)) => Ok(StringLiteral(s1 + &s2)),
                         _ => Err((
-                            operator,
+                            operator.clone(),
                             "Operands must be two numbers or two strings.".into(),
                         )),
                     },
@@ -124,20 +140,42 @@ impl Interpreter for Expr {
                     }
                     TokenType::BangEqual => Ok(BoolLiteral(!is_equal(left, right))),
                     TokenType::EqualEqual => Ok(BoolLiteral(is_equal(left, right))),
-                    _ => Err((operator, "Expected a binary operator.".into())),
+                    _ => Err((operator.clone(), "Expected a binary operator.".into())),
                 }
             }
             Expr::Grouping { expression } => expression.interpret(environment),
-            Expr::LiteralExpr { value } => Ok(value),
+            Expr::LiteralExpr { value } => Ok(value.clone()),
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => {
+                let left = left.interpret(environment)?;
+
+                match operator.typ {
+                    TokenType::Or => {
+                        if is_truthy(&left) {
+                            return Ok(left);
+                        }
+                    }
+                    _ => {
+                        if !is_truthy(&left) {
+                            return Ok(left);
+                        }
+                    }
+                };
+
+                right.interpret(environment)
+            }
             Expr::Unary { operator, right } => {
                 let right = right.interpret(environment)?;
                 match operator.typ {
-                    TokenType::Bang => Ok(Literal::BoolLiteral(!is_truthy(right))),
+                    TokenType::Bang => Ok(Literal::BoolLiteral(!is_truthy(&right))),
                     TokenType::Minus => match right {
                         F64(value) => Ok(F64(-value)),
-                        _ => Err((operator, "Operand must be a number.".into())),
+                        _ => Err((operator.clone(), "Operand must be a number.".into())),
                     },
-                    _ => Err((operator, "Expected a unary operator.".into())),
+                    _ => Err((operator.clone(), "Expected a unary operator.".into())),
                 }
             }
             Expr::Variable { name } => environment.get(&name),
@@ -145,7 +183,10 @@ impl Interpreter for Expr {
     }
 }
 
-fn execute_block(statements: Vec<Stmt>, environment: &mut Environment) -> Result<(), (Token, Soo)> {
+fn execute_block(
+    statements: &mut Vec<Stmt>,
+    environment: &mut Environment,
+) -> Result<(), (Token, Soo)> {
     environment.add_scope();
 
     for stmt in statements {
@@ -157,7 +198,7 @@ fn execute_block(statements: Vec<Stmt>, environment: &mut Environment) -> Result
 }
 
 fn get_numeric_operands(
-    operator: Token,
+    operator: &mut Token,
     left: Literal,
     right: Literal,
 ) -> Result<(f64, f64), (Token, Soo)> {
@@ -165,19 +206,19 @@ fn get_numeric_operands(
 
     let left = match left {
         F64(value) => value,
-        _ => return Err((operator, message.into())),
+        _ => return Err((operator.clone(), message.into())),
     };
     let right = match right {
         F64(value) => value,
-        _ => return Err((operator, message.into())),
+        _ => return Err((operator.clone(), message.into())),
     };
 
     Ok((left, right))
 }
 
-fn is_truthy(literal: Literal) -> bool {
+fn is_truthy(literal: &Literal) -> bool {
     match literal {
-        Literal::BoolLiteral(b) => b,
+        Literal::BoolLiteral(b) => *b,
         Literal::None => false,
         _ => true,
     }

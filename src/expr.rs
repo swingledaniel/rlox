@@ -1,5 +1,6 @@
 use crate::token::{Literal, Token};
 
+#[derive(Debug)]
 pub enum Expr {
     Assign {
         name: Token,
@@ -15,6 +16,11 @@ pub enum Expr {
     },
     LiteralExpr {
         value: Literal,
+    },
+    Logical {
+        left: Box<Expr>,
+        operator: Token,
+        right: Box<Expr>,
     },
     Unary {
         operator: Token,
