@@ -1,3 +1,4 @@
+use crate::callable::{Callable, CallableKind};
 use crate::environment::Environment;
 use crate::runtime_error;
 use crate::stmt::Stmt;
@@ -5,12 +6,6 @@ use crate::token::{Literal::*, Token};
 use crate::token_type::TokenType;
 use crate::utils::Soo;
 use crate::{expr::*, token::Literal};
-
-impl From<&'static str> for Soo {
-    fn from(s: &'static str) -> Soo {
-        Soo::Static(s)
-    }
-}
 
 pub fn interpret(statements: Vec<Stmt>, environment: &mut Environment) -> bool {
     for mut statement in statements.into_iter() {
@@ -27,10 +22,11 @@ pub fn interpret(statements: Vec<Stmt>, environment: &mut Environment) -> bool {
 
 fn stringify(literal: Literal) -> String {
     match literal {
-        None => "nil".to_owned(),
-        IdentifierLiteral(ident) => ident,
-        StringLiteral(s) => s,
         BoolLiteral(b) => b.to_string(),
+        FunctionLiteral(function) => match function.kind {
+            CallableKind::Function(declaration) => format!("<fn {}>", declaration.name.lexeme),
+            CallableKind::Native(_) => "<native fn>".to_owned(),
+        },
         F64(f) => {
             if f.fract() == 0f64 {
                 (f as i64).to_string()
@@ -38,6 +34,9 @@ fn stringify(literal: Literal) -> String {
                 f.to_string()
             }
         }
+        IdentifierLiteral(ident) => ident,
+        StringLiteral(s) => s,
+        None => "nil".to_owned(),
     }
 }
 
@@ -53,6 +52,10 @@ impl Interpreter for Stmt {
             }
             Stmt::Expression { expression } => {
                 expression.interpret(environment)?;
+            }
+            Self::Function(stmt) => {
+                let function = FunctionLiteral(Callable::new_function(stmt));
+                environment.define(&stmt.name.lexeme, function);
             }
             Stmt::If {
                 condition,
@@ -143,6 +146,36 @@ impl Interpreter for Expr {
                     _ => Err((operator.clone(), "Expected a binary operator.".into())),
                 }
             }
+            Expr::Call {
+                callee,
+                paren,
+                arguments,
+            } => {
+                let callee = callee.interpret(environment)?;
+
+                let mut func_args = Vec::new();
+                for argument in arguments {
+                    func_args.push(argument.interpret(environment)?);
+                }
+
+                match callee {
+                    FunctionLiteral(function) => {
+                        if func_args.len() != function.arity {
+                            Err((
+                                paren.clone(),
+                                Soo::Owned(format!(
+                                    "Expected {} arguments but got {}.",
+                                    function.arity,
+                                    func_args.len()
+                                )),
+                            ))
+                        } else {
+                            function.call(environment, func_args)
+                        }
+                    }
+                    _ => Err((paren.clone(), "Can only call functions and classes.".into())),
+                }
+            }
             Expr::Grouping { expression } => expression.interpret(environment),
             Expr::LiteralExpr { value } => Ok(value.clone()),
             Expr::Logical {
@@ -183,7 +216,7 @@ impl Interpreter for Expr {
     }
 }
 
-fn execute_block(
+pub fn execute_block(
     statements: &mut Vec<Stmt>,
     environment: &mut Environment,
 ) -> Result<(), (Token, Soo)> {

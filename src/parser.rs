@@ -5,6 +5,7 @@ use crate::report;
 use crate::stmt::Stmt;
 use crate::token::Literal;
 use crate::token_type::TokenType::{self, *};
+use crate::utils::Soo;
 use crate::{expr::Expr, token::Token};
 
 // parameters: token iterator, and a series of TokenType variants separated by |
@@ -25,7 +26,7 @@ macro_rules! match_types {
     };
 }
 
-pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, Vec<(Token, &'static str)>> {
+pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, Vec<(Token, Soo)>> {
     let line_count = match tokens.last() {
         Some(token) => token.line,
         None => 0,
@@ -54,8 +55,9 @@ fn declaration(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Stmt, (Token, &'static str)> {
+) -> Result<Stmt, (Token, Soo)> {
     let result = match tokens.peek().unwrap().typ {
+        Fun => function("function", line_count, tokens, had_error),
         Var => var_declaration(line_count, tokens, had_error),
         _ => statement(line_count, tokens, had_error),
     };
@@ -66,11 +68,89 @@ fn declaration(
     result
 }
 
+fn function(
+    kind: &str,
+    line_count: usize,
+    tokens: &mut Peekable<Iter<Token>>,
+    had_error: &mut bool,
+) -> Result<Stmt, (Token, Soo)> {
+    tokens.next();
+    let name = consume(
+        Identifier,
+        format!("Expected {kind} name, instead found end of file.").into(),
+        format!("Expected {kind} name.").into(),
+        line_count,
+        tokens,
+    )?
+    .clone();
+    consume(
+        LeftParen,
+        format!("Expected '(' after {kind} name, instead found end of file.").into(),
+        format!("Expected '(' after {kind} name.").into(),
+        line_count,
+        tokens,
+    )?;
+
+    let mut parameters = Vec::new();
+    if !check(RightParen, tokens) {
+        loop {
+            if parameters.len() >= 255 {
+                report_error(
+                    tokens,
+                    line_count,
+                    had_error,
+                    "Can't have more than 255 parameters.".into(),
+                );
+            }
+
+            parameters.push(
+                consume(
+                    Identifier,
+                    "Expected parameter name.".into(),
+                    "Expected parameter name, instead found end of file.".into(),
+                    line_count,
+                    tokens,
+                )?
+                .to_owned(),
+            );
+
+            if match_types!(tokens, Comma).is_none() {
+                break;
+            }
+        }
+    }
+
+    consume(
+        RightParen,
+        "Expect ')' after paremeters.".into(),
+        "Expect ')' after paremeters, instead found end of file.".into(),
+        line_count,
+        tokens,
+    )?;
+
+    if !check(LeftBrace, tokens) {
+        consume(
+            LeftBrace,
+            format!("Expect '{{' before {kind} body.").into(),
+            format!("Expect '{{' before {kind} body, instead found end of file.").into(),
+            line_count,
+            tokens,
+        )?;
+    }
+
+    let body = block(line_count, tokens, had_error)?;
+    Ok(Stmt::Function(crate::stmt::Function {
+        name: name.to_owned(),
+        params: parameters,
+        body,
+    }))
+}
+
 fn var_declaration(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Stmt, (Token, &'static str)> {
+) -> Result<Stmt, (Token, Soo)> {
     tokens.next();
 
     let stmt = match tokens.next() {
@@ -91,12 +171,12 @@ fn var_declaration(
                     initializer,
                 })
             }
-            _ => Err(error(line_count, tokens, "Expected variable name.")),
+            _ => Err(error(line_count, tokens, "Expected variable name.".into())),
         },
         None => Err(error(
             line_count,
             tokens,
-            "Expected variable name, instead found end of file.",
+            "Expected variable name, instead found end of file.".into(),
         )),
     }?;
 
@@ -106,13 +186,13 @@ fn var_declaration(
             _ => Err(error(
                 line_count,
                 tokens,
-                "Expected ';' after variable declaration.",
+                "Expected ';' after variable declaration.".into(),
             )),
         },
         None => Err(error(
             line_count,
             tokens,
-            "Expected ';' after variable declaration, instead found end of file.",
+            "Expected ';' after variable declaration, instead found end of file.".into(),
         )),
     }
 }
@@ -121,7 +201,7 @@ fn statement(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Stmt, (Token, &'static str)> {
+) -> Result<Stmt, (Token, Soo)> {
     match tokens.peek() {
         Some(next_token) => match next_token.typ {
             For => for_statement(line_count, tokens, had_error),
@@ -133,7 +213,7 @@ fn statement(
             }),
             _ => expression_statement(line_count, tokens, had_error),
         },
-        None => Err(error(line_count, tokens, "Expected a statement.")),
+        None => Err(error(line_count, tokens, "Expected a statement.".into())),
     }
 }
 
@@ -141,15 +221,14 @@ fn for_statement(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Stmt, (Token, &'static str)> {
+) -> Result<Stmt, (Token, Soo)> {
     tokens.next();
     consume(
         LeftParen,
-        "Expected '(' after 'for', instead found end of file.",
-        "Expected '(' after 'for'.",
+        "Expected '(' after 'for', instead found end of file.".into(),
+        "Expected '(' after 'for'.".into(),
         line_count,
         tokens,
-        had_error,
     )?;
 
     let initializer = if let Some(_) = match_types!(tokens, Semicolon) {
@@ -167,11 +246,10 @@ fn for_statement(
     };
     consume(
         Semicolon,
-        "Expected ';' after loop condition, instead found end of file.",
-        "Expected ';' after loop condition.",
+        "Expected ';' after loop condition, instead found end of file.".into(),
+        "Expected ';' after loop condition.".into(),
         line_count,
         tokens,
-        had_error,
     )?;
 
     let increment = if !check(RightParen, tokens) {
@@ -181,11 +259,10 @@ fn for_statement(
     };
     consume(
         RightParen,
-        "Expected ')' after for clauses, instead found end of file.",
-        "Expected ')' after for clauses.",
+        "Expected ')' after for clauses, instead found end of file.".into(),
+        "Expected ')' after for clauses.".into(),
         line_count,
         tokens,
-        had_error,
     )?;
 
     let mut body = statement(line_count, tokens, had_error)?;
@@ -222,7 +299,7 @@ fn if_statement(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Stmt, (Token, &'static str)> {
+) -> Result<Stmt, (Token, Soo)> {
     tokens.next();
 
     match tokens.next() {
@@ -249,22 +326,22 @@ fn if_statement(
                         _ => Err(error(
                             line_count,
                             tokens,
-                            "Expected ')' after 'if' condition.",
+                            "Expected ')' after 'if' condition.".into(),
                         )),
                     },
                     _ => Err(error(
                         line_count,
                         tokens,
-                        "Expected ')' after 'if' condition, instead found end of file.",
+                        "Expected ')' after 'if' condition, instead found end of file.".into(),
                     )),
                 }
             }
-            _ => Err(error(line_count, tokens, "Expected '(' after 'if'.")),
+            _ => Err(error(line_count, tokens, "Expected '(' after 'if'.".into())),
         },
         _ => Err(error(
             line_count,
             tokens,
-            "Expected '(' after 'if', instead found end of file.",
+            "Expected '(' after 'if', instead found end of file.".into(),
         )),
     }
 }
@@ -273,7 +350,7 @@ fn print_statement(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Stmt, (Token, &'static str)> {
+) -> Result<Stmt, (Token, Soo)> {
     tokens.next();
     let value = expression(line_count, tokens, had_error)?;
 
@@ -282,12 +359,16 @@ fn print_statement(
             Semicolon => Ok(Stmt::Print {
                 expression: Box::new(value),
             }),
-            _ => Err(error(line_count, tokens, "Expected ';' after value.")),
+            _ => Err(error(
+                line_count,
+                tokens,
+                "Expected ';' after value.".into(),
+            )),
         },
         None => Err(error(
             line_count,
             tokens,
-            "Expected ';' after value, instead found end of file.",
+            "Expected ';' after value, instead found end of file.".into(),
         )),
     }
 }
@@ -296,7 +377,7 @@ fn while_statement(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Stmt, (Token, &'static str)> {
+) -> Result<Stmt, (Token, Soo)> {
     tokens.next();
 
     match tokens.next() {
@@ -313,21 +394,29 @@ fn while_statement(
                                 body: Box::new(body),
                             })
                         }
-                        _ => Err(error(line_count, tokens, "Expected ')' after condition.")),
+                        _ => Err(error(
+                            line_count,
+                            tokens,
+                            "Expected ')' after condition.".into(),
+                        )),
                     },
                     _ => Err(error(
                         line_count,
                         tokens,
-                        "Expected ')' after condition, instead found end of file.",
+                        "Expected ')' after condition, instead found end of file.".into(),
                     )),
                 }
             }
-            _ => Err(error(line_count, tokens, "Expected '(' after 'while'.")),
+            _ => Err(error(
+                line_count,
+                tokens,
+                "Expected '(' after 'while'.".into(),
+            )),
         },
         _ => Err(error(
             line_count,
             tokens,
-            "Expected '(' after 'while', instead found end of file.",
+            "Expected '(' after 'while', instead found end of file.".into(),
         )),
     }
 }
@@ -336,7 +425,7 @@ fn block(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Vec<Stmt>, (Token, &'static str)> {
+) -> Result<Vec<Stmt>, (Token, Soo)> {
     tokens.next();
     let mut statements = Vec::new();
 
@@ -353,14 +442,18 @@ fn block(
         };
     }
 
-    Err(error(line_count, tokens, "Expected '}' after block."))
+    Err(error(
+        line_count,
+        tokens,
+        "Expected '}' after block.".into(),
+    ))
 }
 
 fn expression_statement(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Stmt, (Token, &'static str)> {
+) -> Result<Stmt, (Token, Soo)> {
     let expression = expression(line_count, tokens, had_error)?;
 
     match tokens.next() {
@@ -368,12 +461,16 @@ fn expression_statement(
             Semicolon => Ok(Stmt::Expression {
                 expression: Box::new(expression),
             }),
-            _ => Err(error(line_count, tokens, "Expected ';' after expression.")),
+            _ => Err(error(
+                line_count,
+                tokens,
+                "Expected ';' after expression.".into(),
+            )),
         },
         None => Err(error(
             line_count,
             tokens,
-            "Expected ';' after expression, instead found end of file.",
+            "Expected ';' after expression, instead found end of file.".into(),
         )),
     }
 }
@@ -382,7 +479,7 @@ fn expression(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Expr, (Token, &'static str)> {
+) -> Result<Expr, (Token, Soo)> {
     assignment(line_count, tokens, had_error)
 }
 
@@ -390,7 +487,7 @@ fn assignment(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Expr, (Token, &'static str)> {
+) -> Result<Expr, (Token, Soo)> {
     let expr = or(line_count, tokens, had_error)?;
 
     match tokens.peek() {
@@ -405,7 +502,7 @@ fn assignment(
                         value: Box::new(value),
                     }),
                     _ => {
-                        error(line_count, tokens, "Invalid assignment target.");
+                        error(line_count, tokens, "Invalid assignment target.".into());
                         Ok(expr)
                     }
                 }
@@ -420,7 +517,7 @@ fn or(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Expr, (Token, &'static str)> {
+) -> Result<Expr, (Token, Soo)> {
     let mut expr = and(line_count, tokens, had_error)?;
 
     while let Some(operator) = match_types!(tokens, Or) {
@@ -440,7 +537,7 @@ fn and(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Expr, (Token, &'static str)> {
+) -> Result<Expr, (Token, Soo)> {
     let mut expr = equality(line_count, tokens, had_error)?;
 
     while let Some(operator) = match_types!(tokens, And) {
@@ -460,7 +557,7 @@ fn equality(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Expr, (Token, &'static str)> {
+) -> Result<Expr, (Token, Soo)> {
     let mut expr = comparison(line_count, tokens, had_error)?;
 
     while let Some(operator) = match_types!(tokens, BangEqual | EqualEqual) {
@@ -480,7 +577,7 @@ fn comparison(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Expr, (Token, &'static str)> {
+) -> Result<Expr, (Token, Soo)> {
     let mut expr = term(line_count, tokens, had_error)?;
 
     while let Some(operator) = match_types!(tokens, Greater | GreaterEqual | Less | LessEqual) {
@@ -500,7 +597,7 @@ fn term(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Expr, (Token, &'static str)> {
+) -> Result<Expr, (Token, Soo)> {
     let mut expr = factor(line_count, tokens, had_error);
 
     while let Some(operator) = match_types!(tokens, Minus | Plus) {
@@ -520,7 +617,7 @@ fn factor(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Expr, (Token, &'static str)> {
+) -> Result<Expr, (Token, Soo)> {
     let mut expr = unary(line_count, tokens, had_error);
 
     while let Some(operator) = match_types!(tokens, Slash | Star) {
@@ -540,7 +637,7 @@ fn unary(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Expr, (Token, &'static str)> {
+) -> Result<Expr, (Token, Soo)> {
     if let Some(operator) = match_types!(tokens, Bang | Minus) {
         let operator = operator.to_owned();
         let right = unary(line_count, tokens, had_error);
@@ -549,15 +646,75 @@ fn unary(
             right: Box::new(right?),
         })
     } else {
-        primary(line_count, tokens, had_error)
+        call(line_count, tokens, had_error)
     }
+}
+
+fn call(
+    line_count: usize,
+    tokens: &mut Peekable<Iter<Token>>,
+    had_error: &mut bool,
+) -> Result<Expr, (Token, Soo)> {
+    let mut expr = primary(line_count, tokens, had_error)?;
+
+    loop {
+        if let Some(_) = match_types!(tokens, LeftParen) {
+            expr = finish_call(expr, line_count, tokens, had_error)?;
+        } else {
+            break;
+        }
+    }
+
+    Ok(expr)
+}
+
+fn finish_call(
+    callee: Expr,
+    line_count: usize,
+    tokens: &mut Peekable<Iter<Token>>,
+    had_error: &mut bool,
+) -> Result<Expr, (Token, Soo)> {
+    let mut arguments = Vec::new();
+
+    if !check(RightParen, tokens) {
+        loop {
+            if arguments.len() >= 255 {
+                report_error(
+                    tokens,
+                    line_count,
+                    had_error,
+                    "Can't have more than 255 arguments.".into(),
+                );
+            }
+
+            arguments.push(expression(line_count, tokens, had_error)?);
+            if !match_types!(tokens, Comma).is_some() {
+                break;
+            }
+        }
+    }
+
+    let paren = consume(
+        RightParen,
+        "Expected ')' after arguments, instead found end of file.".into(),
+        "Expected ')' after arguments.".into(),
+        line_count,
+        tokens,
+    )?
+    .to_owned();
+
+    Ok(Expr::Call {
+        callee: Box::new(callee),
+        paren,
+        arguments,
+    })
 }
 
 fn primary(
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
-) -> Result<Expr, (Token, &'static str)> {
+) -> Result<Expr, (Token, Soo)> {
     match tokens.next() {
         Some(token) => match token.typ {
             False => Ok(Expr::LiteralExpr {
@@ -583,36 +740,39 @@ fn primary(
                         RightParen => Ok(Expr::Grouping {
                             expression: Box::new(expr?),
                         }),
-                        _ => Err(error(line_count, tokens, "Expected ')' after expression.")),
+                        _ => Err(error(
+                            line_count,
+                            tokens,
+                            "Expected ')' after expression.".into(),
+                        )),
                     },
                     None => Err(error(
                         line_count,
                         tokens,
-                        "Expected ')' after expression, instead found end of file.",
+                        "Expected ')' after expression, instead found end of file.".into(),
                     )),
                 }
             }
-            _ => Err((token.clone(), "Expected expression.")),
+            _ => Err((token.clone(), "Expected expression.".into())),
         },
         None => Err((
             generate_eof(line_count),
-            "Expected expression, instead found end of file.",
+            "Expected expression, instead found end of file.".into(),
         )),
     }
 }
 
-fn consume(
+fn consume<'t>(
     typ: TokenType,
-    eof_message: &'static str,
-    message: &'static str,
+    eof_message: Soo,
+    message: Soo,
     line_count: usize,
-    tokens: &mut Peekable<Iter<Token>>,
-    had_error: &mut bool,
-) -> Result<(), (Token, &'static str)> {
+    tokens: &'t mut Peekable<Iter<Token>>,
+) -> Result<&'t Token, (Token, Soo)> {
     match tokens.next() {
         Some(token) => {
             if token.typ == typ {
-                Ok(())
+                Ok(token)
             } else {
                 Err(error(line_count, tokens, message))
             }
@@ -628,18 +788,14 @@ fn check(typ: TokenType, tokens: &mut Peekable<Iter<Token>>) -> bool {
     }
 }
 
-fn error(
-    line_count: usize,
-    tokens: &mut Peekable<Iter<Token>>,
-    message: &'static str,
-) -> (Token, &'static str) {
+fn error(line_count: usize, tokens: &mut Peekable<Iter<Token>>, message: Soo) -> (Token, Soo) {
     match tokens.next() {
         Some(token) => {
-            report(token.line, &format!(" at '{}'", token.lexeme), message);
+            report(token.line, &format!(" at '{}'", token.lexeme), &message);
             (token.clone(), message)
         }
         None => {
-            report(line_count, " at end", message);
+            report(line_count, " at end", &message);
             (generate_eof(line_count), message)
         }
     }
@@ -668,4 +824,21 @@ fn generate_eof(line_count: usize) -> Token {
         literal: Literal::None,
         line: line_count,
     }
+}
+
+/// only report the error without throwing
+fn report_error(
+    tokens: &mut Peekable<Iter<Token>>,
+    line_count: usize,
+    had_error: &mut bool,
+    message: Soo,
+) {
+    crate::error(
+        tokens
+            .peek()
+            .and_then(|token| Some(token.line))
+            .unwrap_or(line_count),
+        &message,
+    );
+    *had_error = true;
 }

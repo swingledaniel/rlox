@@ -1,6 +1,13 @@
 use crate::{expr::Expr, token::Token};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+pub struct Function {
+    pub name: Token,
+    pub params: Vec<Token>,
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Clone, Debug)]
 pub enum Stmt {
     Block {
         statements: Vec<Stmt>,
@@ -8,6 +15,7 @@ pub enum Stmt {
     Expression {
         expression: Box<Expr>,
     },
+    Function(Function),
     If {
         condition: Box<Expr>,
         then_branch: Box<Stmt>,

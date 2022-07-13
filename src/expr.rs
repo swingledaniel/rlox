@@ -1,6 +1,6 @@
 use crate::token::{Literal, Token};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     Assign {
         name: Token,
@@ -10,6 +10,11 @@ pub enum Expr {
         left: Box<Expr>,
         operator: Token,
         right: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        paren: Token,
+        arguments: Vec<Expr>,
     },
     Grouping {
         expression: Box<Expr>,

@@ -14,3 +14,15 @@ impl fmt::Display for Soo {
         }
     }
 }
+
+impl std::convert::From<&'static str> for Soo {
+    fn from(item: &'static str) -> Self {
+        Soo::Static(item)
+    }
+}
+
+impl std::convert::From<String> for Soo {
+    fn from(item: String) -> Self {
+        Soo::Owned(item)
+    }
+}

@@ -1,11 +1,13 @@
+use crate::callable::Callable;
 use crate::token_type::TokenType;
 
 #[derive(Debug, Clone)]
 pub enum Literal {
+    BoolLiteral(bool),
+    FunctionLiteral(Callable),
+    F64(f64),
     IdentifierLiteral(String),
     StringLiteral(String),
-    BoolLiteral(bool),
-    F64(f64),
     None,
 }
 

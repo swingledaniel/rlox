@@ -1,4 +1,5 @@
 mod ast_display;
+mod callable;
 mod environment;
 mod expr;
 mod interpreter;
@@ -81,11 +82,11 @@ fn run(source: &str, environment: &mut Environment) -> (bool, bool) {
     }
 }
 
-fn error(line: usize, message: &str) {
+fn error(line: usize, message: &Soo) {
     report(line, "", message);
 }
 
-fn report(line: usize, location: &str, message: &str) {
+fn report(line: usize, location: &str, message: &Soo) {
     println!("[line {}] Error{}: {}", line, location, message);
 }
 

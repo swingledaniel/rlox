@@ -122,7 +122,7 @@ impl<'a> Scanner<'a> {
                 } else if self.is_alpha(c) {
                     self.scan_identifier();
                 } else {
-                    error(self.line, "Unexpected character.");
+                    error(self.line, &("Unexpected character.".into()));
                     self.text.pop();
                     return true;
                 }
@@ -144,7 +144,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.source.peek().is_none() {
-            error(self.line, "Unterminated string.");
+            error(self.line, &("Unterminated string.".into()));
             return;
         }
 
