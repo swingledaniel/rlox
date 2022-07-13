@@ -24,7 +24,10 @@ fn stringify(literal: Literal) -> String {
     match literal {
         BoolLiteral(b) => b.to_string(),
         FunctionLiteral(function) => match function.kind {
-            CallableKind::Function(declaration) => format!("<fn {}>", declaration.name.lexeme),
+            CallableKind::Function {
+                declaration,
+                closure: _,
+            } => format!("<fn {}>", declaration.name.lexeme),
             CallableKind::Native(_) => "<native fn>".to_owned(),
         },
         F64(f) => {
@@ -53,8 +56,8 @@ impl Interpreter for Stmt {
             Stmt::Expression { expression } => {
                 expression.interpret(environment)?;
             }
-            Self::Function(stmt) => {
-                let function = FunctionLiteral(Callable::new_function(stmt));
+            Stmt::Function(stmt) => {
+                let function = FunctionLiteral(Callable::new_function(stmt, environment.clone()));
                 environment.define(&stmt.name.lexeme, function);
             }
             Stmt::If {
@@ -71,6 +74,21 @@ impl Interpreter for Stmt {
             Stmt::Print { expression } => {
                 let literal = expression.interpret(environment)?;
                 println!("{}", stringify(literal));
+            }
+            Stmt::Return { keyword: _, value } => {
+                let value = match value {
+                    Some(expr) => expr.interpret(environment)?,
+                    _ => Literal::None,
+                };
+                return Err((
+                    Token {
+                        typ: TokenType::Return,
+                        lexeme: "RETURN".to_owned(),
+                        literal: value,
+                        line: 0,
+                    },
+                    "".into(),
+                ));
             }
             Stmt::Var { name, initializer } => {
                 let value = match initializer {
@@ -170,7 +188,7 @@ impl Interpreter for Expr {
                                 )),
                             ))
                         } else {
-                            function.call(environment, func_args)
+                            function.call(func_args)
                         }
                     }
                     _ => Err((paren.clone(), "Can only call functions and classes.".into())),

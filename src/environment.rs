@@ -6,6 +6,7 @@ use crate::{
     utils::Soo,
 };
 
+#[derive(Clone, Debug)]
 pub struct Environment {
     pub layers: Vec<Rc<RefCell<HashMap<String, Literal>>>>,
 }

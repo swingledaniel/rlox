@@ -12,8 +12,11 @@ impl fmt::Display for Literal {
             Literal::BoolLiteral(b) => {
                 write!(f, "{}", b)
             }
-            Literal::FunctionLiteral(function) => match function.kind {
-                CallableKind::Function(_) => write!(f, "function"),
+            Literal::FunctionLiteral(function) => match &function.kind {
+                CallableKind::Function {
+                    declaration,
+                    closure: _,
+                } => write!(f, "{}", declaration.name),
                 CallableKind::Native(name) => write!(f, "{name}"),
             },
             Literal::F64(float) => {

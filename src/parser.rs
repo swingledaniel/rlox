@@ -75,6 +75,7 @@ fn function(
     had_error: &mut bool,
 ) -> Result<Stmt, (Token, Soo)> {
     tokens.next();
+
     let name = consume(
         Identifier,
         format!("Expected {kind} name, instead found end of file.").into(),
@@ -207,6 +208,7 @@ fn statement(
             For => for_statement(line_count, tokens, had_error),
             If => if_statement(line_count, tokens, had_error),
             Print => print_statement(line_count, tokens, had_error),
+            Return => return_statement(line_count, tokens, had_error),
             While => while_statement(line_count, tokens, had_error),
             LeftBrace => Ok(Stmt::Block {
                 statements: block(line_count, tokens, had_error)?,
@@ -223,6 +225,7 @@ fn for_statement(
     had_error: &mut bool,
 ) -> Result<Stmt, (Token, Soo)> {
     tokens.next();
+
     consume(
         LeftParen,
         "Expected '(' after 'for', instead found end of file.".into(),
@@ -371,6 +374,28 @@ fn print_statement(
             "Expected ';' after value, instead found end of file.".into(),
         )),
     }
+}
+
+fn return_statement(
+    line_count: usize,
+    tokens: &mut Peekable<Iter<Token>>,
+    had_error: &mut bool,
+) -> Result<Stmt, (Token, Soo)> {
+    let keyword = tokens.next().unwrap().to_owned();
+    let value = if !check(Semicolon, tokens) {
+        Some(Box::new(expression(line_count, tokens, had_error)?))
+    } else {
+        None
+    };
+
+    consume(
+        Semicolon,
+        "Expected ';' after return value, instead found end of file.".into(),
+        "Expected ';' after return value.".into(),
+        line_count,
+        tokens,
+    )?;
+    Ok(Stmt::Return { keyword, value })
 }
 
 fn while_statement(

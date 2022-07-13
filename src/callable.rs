@@ -17,12 +17,15 @@ pub struct Callable {
 
 #[derive(Clone, Debug)]
 pub enum CallableKind {
-    Function(Box<stmt::Function>),
+    Function {
+        declaration: Box<stmt::Function>,
+        closure: Environment,
+    },
     Native(&'static str),
 }
 
 impl Callable {
-    pub fn new_function(declaration: &mut stmt::Function) -> Self {
+    pub fn new_function(declaration: &mut stmt::Function, closure: Environment) -> Self {
         Callable {
             arity: declaration.params.len(),
             parameters: declaration
@@ -30,26 +33,33 @@ impl Callable {
                 .iter()
                 .map(|token| token.lexeme.to_owned())
                 .collect(),
-            kind: CallableKind::Function(Box::new(declaration.clone())),
+            kind: CallableKind::Function {
+                declaration: Box::new(declaration.clone()),
+                closure,
+            },
         }
     }
 
-    pub fn call(
-        self,
-        environment: &mut Environment,
-        arguments: Vec<Literal>,
-    ) -> Result<Literal, (Token, Soo)> {
+    pub fn call(self, arguments: Vec<Literal>) -> Result<Literal, (Token, Soo)> {
         match self.kind {
-            CallableKind::Function(mut declaration) => {
-                let mut function_env = Environment {
-                    layers: vec![environment.layers.first().unwrap().clone()],
-                };
-                function_env.add_scope();
+            CallableKind::Function {
+                mut declaration,
+                mut closure,
+            } => {
+                closure.add_scope();
                 for (param, arg) in self.parameters.iter().zip(arguments.into_iter()) {
-                    function_env.define(param, arg);
+                    closure.define(param, arg);
                 }
 
-                execute_block(&mut declaration.body, &mut function_env)?;
+                match execute_block(&mut declaration.body, &mut closure) {
+                    Err((token, message)) => {
+                        return match (token.typ, token.lexeme.as_str()) {
+                            (crate::token_type::TokenType::Return, "RETURN") => Ok(token.literal),
+                            _ => Err((token, message)),
+                        }
+                    }
+                    _ => {}
+                };
                 Ok(Literal::None)
             }
             CallableKind::Native(name) => match name {
