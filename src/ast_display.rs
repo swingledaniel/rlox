@@ -43,18 +43,18 @@ impl fmt::Display for Token {
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Expr::Assign { name, value } => {
+        match &self.1 {
+            ExprKind::Assign { name, value } => {
                 write!(f, "{name} = {value}")
             }
-            Expr::Binary {
+            ExprKind::Binary {
                 left,
                 operator,
                 right,
             } => {
                 write!(f, "({operator} {left} {right})")
             }
-            Expr::Call {
+            ExprKind::Call {
                 callee,
                 paren: _,
                 arguments,
@@ -69,23 +69,23 @@ impl fmt::Display for Expr {
                 })?;
                 write!(f, ")")
             }
-            Expr::Grouping { expression } => {
+            ExprKind::Grouping { expression } => {
                 write!(f, "(group {expression})")
             }
-            Expr::LiteralExpr { value } => {
+            ExprKind::LiteralExpr { value } => {
                 write!(f, "{value}")
             }
-            Expr::Logical {
+            ExprKind::Logical {
                 left,
                 operator,
                 right,
             } => {
                 write!(f, "{left} {operator} {right}")
             }
-            Expr::Unary { operator, right } => {
+            ExprKind::Unary { operator, right } => {
                 write!(f, "({operator} {right})")
             }
-            Expr::Variable { name } => {
+            ExprKind::Variable { name } => {
                 write!(f, "{name}")
             }
         }

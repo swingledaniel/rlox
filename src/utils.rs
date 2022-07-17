@@ -26,3 +26,17 @@ impl std::convert::From<String> for Soo {
         Soo::Owned(item)
     }
 }
+
+pub struct ExprId(usize);
+
+impl ExprId {
+    pub fn new() -> Self {
+        ExprId(0)
+    }
+
+    pub fn next(&mut self) -> usize {
+        let id = self.0;
+        self.0 += 1;
+        id
+    }
+}

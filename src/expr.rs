@@ -1,7 +1,10 @@
 use crate::token::{Literal, Token};
 
 #[derive(Clone, Debug)]
-pub enum Expr {
+pub struct Expr(pub usize, pub ExprKind);
+
+#[derive(Clone, Debug)]
+pub enum ExprKind {
     Assign {
         name: Token,
         value: Box<Expr>,

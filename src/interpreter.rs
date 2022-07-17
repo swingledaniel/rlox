@@ -75,7 +75,7 @@ impl Interpreter for Stmt {
                 let literal = expression.interpret(environment)?;
                 println!("{}", stringify(literal));
             }
-            Stmt::Return { keyword: _, value } => {
+            Stmt::Return { keyword, value } => {
                 let value = match value {
                     Some(expr) => expr.interpret(environment)?,
                     _ => Literal::None,
@@ -85,7 +85,7 @@ impl Interpreter for Stmt {
                         typ: TokenType::Return,
                         lexeme: "RETURN".to_owned(),
                         literal: value,
-                        line: 0,
+                        line: keyword.line,
                     },
                     "".into(),
                 ));
@@ -109,12 +109,16 @@ impl Interpreter for Stmt {
 
 impl Interpreter for Expr {
     fn interpret(&mut self, environment: &mut Environment) -> Result<Literal, (Token, Soo)> {
-        match self {
-            Expr::Assign { name, value } => {
+        match &mut self.1 {
+            ExprKind::Assign { name, value } => {
                 let literal = value.interpret(environment)?;
-                environment.assign(&name, literal)
+
+                match environment.locals.get(&self.0) {
+                    Some(distance) => environment.assign_at(*distance, &name, literal),
+                    _ => environment.assign_global(&name, literal),
+                }
             }
-            Expr::Binary {
+            ExprKind::Binary {
                 left: left_expr,
                 operator,
                 right: right_expr,
@@ -164,7 +168,7 @@ impl Interpreter for Expr {
                     _ => Err((operator.clone(), "Expected a binary operator.".into())),
                 }
             }
-            Expr::Call {
+            ExprKind::Call {
                 callee,
                 paren,
                 arguments,
@@ -194,9 +198,9 @@ impl Interpreter for Expr {
                     _ => Err((paren.clone(), "Can only call functions and classes.".into())),
                 }
             }
-            Expr::Grouping { expression } => expression.interpret(environment),
-            Expr::LiteralExpr { value } => Ok(value.clone()),
-            Expr::Logical {
+            ExprKind::Grouping { expression } => expression.interpret(environment),
+            ExprKind::LiteralExpr { value } => Ok(value.clone()),
+            ExprKind::Logical {
                 left,
                 operator,
                 right,
@@ -218,7 +222,7 @@ impl Interpreter for Expr {
 
                 right.interpret(environment)
             }
-            Expr::Unary { operator, right } => {
+            ExprKind::Unary { operator, right } => {
                 let right = right.interpret(environment)?;
                 match operator.typ {
                     TokenType::Bang => Ok(Literal::BoolLiteral(!is_truthy(&right))),
@@ -229,7 +233,7 @@ impl Interpreter for Expr {
                     _ => Err((operator.clone(), "Expected a unary operator.".into())),
                 }
             }
-            Expr::Variable { name } => environment.get(&name),
+            ExprKind::Variable { name } => lookup_variable(&name, self.0, environment),
         }
     }
 }
@@ -245,6 +249,16 @@ pub fn execute_block(
     }
 
     environment.del_scope();
+    Ok(())
+}
+
+pub fn execute_statements(
+    statements: &mut Vec<Stmt>,
+    environment: &mut Environment,
+) -> Result<(), (Token, Soo)> {
+    for stmt in statements {
+        stmt.interpret(environment)?;
+    }
     Ok(())
 }
 
@@ -284,5 +298,27 @@ fn is_equal(left: Literal, right: Literal) -> bool {
         (IdentifierLiteral(ident1), IdentifierLiteral(ident2)) => ident1 == ident2,
         (StringLiteral(s1), StringLiteral(s2)) => s1 == s2,
         _ => false,
+    }
+}
+
+pub fn resolve(id: usize, depth: usize, environment: &mut Environment) {
+    environment.locals.insert(id, depth);
+}
+
+fn lookup_variable(
+    name: &Token,
+    id: usize,
+    environment: &mut Environment,
+) -> Result<Literal, (Token, Soo)> {
+    match environment.locals.get(&id) {
+        Some(distance) => Ok(environment.get_at(*distance, &name.lexeme).unwrap()),
+        _ => Ok(environment
+            .layers
+            .get(0)
+            .unwrap()
+            .borrow_mut()
+            .get(&name.lexeme)
+            .unwrap()
+            .to_owned()),
     }
 }

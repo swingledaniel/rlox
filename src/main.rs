@@ -1,9 +1,12 @@
+#![feature(is_some_with, let_chains)]
+
 mod ast_display;
 mod callable;
 mod environment;
 mod expr;
 mod interpreter;
 mod parser;
+mod resolver;
 mod scanner;
 mod stmt;
 mod token;
@@ -74,7 +77,22 @@ fn run(source: &str, environment: &mut Environment) -> (bool, bool) {
     }
 
     match parser::parse(tokens) {
-        Ok(statements) => (false, interpret(statements, environment)),
+        Ok(mut statements) => {
+            let mut had_error = false;
+            if resolver::resolve_statements(
+                &mut statements,
+                environment,
+                &mut Vec::new(),
+                &mut had_error,
+            )
+            .is_err()
+                || had_error
+            {
+                (true, false)
+            } else {
+                (false, interpret(statements, environment))
+            }
+        }
         Err(_errors) => {
             println!("Parse errors encountered.");
             (true, false)

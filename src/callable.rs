@@ -2,7 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     environment::Environment,
-    interpreter::execute_block,
+    interpreter::execute_statements,
     stmt::{self},
     token::{Literal, Token},
     utils::Soo,
@@ -51,7 +51,7 @@ impl Callable {
                     closure.define(param, arg);
                 }
 
-                match execute_block(&mut declaration.body, &mut closure) {
+                match execute_statements(&mut declaration.body, &mut closure) {
                     Err((token, message)) => {
                         return match (token.typ, token.lexeme.as_str()) {
                             (crate::token_type::TokenType::Return, "RETURN") => Ok(token.literal),
@@ -60,6 +60,8 @@ impl Callable {
                     }
                     _ => {}
                 };
+
+                closure.del_scope();
                 Ok(Literal::None)
             }
             CallableKind::Native(name) => match name {

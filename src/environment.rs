@@ -9,12 +9,16 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Environment {
     pub layers: Vec<Rc<RefCell<HashMap<String, Literal>>>>,
+    pub scopes: Vec<HashMap<String, bool>>,
+    pub locals: HashMap<usize, usize>,
 }
 
 impl Environment {
     pub fn new() -> Self {
         let mut env = Environment {
             layers: vec![Rc::new(RefCell::new(HashMap::new()))],
+            scopes: Vec::new(),
+            locals: HashMap::new(),
         };
 
         // define native functions
@@ -46,33 +50,41 @@ impl Environment {
             .insert(name.to_string(), value);
     }
 
-    pub fn get(&self, name: &Token) -> Result<Literal, (Token, Soo)> {
-        for values in self.layers.iter().rev() {
-            match values.borrow().get(&name.lexeme) {
-                Some(literal) => return Ok(literal.to_owned()),
-                _ => {}
-            };
-        }
-
-        Err((
-            name.clone(),
-            Soo::Owned(format!("Undefined variable '{}'.", name.lexeme)),
-        ))
+    pub fn ancestor(&mut self, distance: usize) -> Rc<RefCell<HashMap<String, Literal>>> {
+        Rc::clone(self.layers.get(self.layers.len() - distance - 1).unwrap())
     }
 
-    pub fn assign(&mut self, name: &Token, value: Literal) -> Result<Literal, (Token, Soo)> {
-        for values in self.layers.iter_mut().rev() {
-            if values.borrow().contains_key(&name.lexeme) {
-                values
-                    .borrow_mut()
-                    .insert(name.lexeme.to_owned(), value.to_owned());
-                return Ok(value);
-            }
-        }
+    pub fn get_at(&mut self, distance: usize, name: &str) -> Option<Literal> {
+        self.ancestor(distance)
+            .borrow_mut()
+            .get(name)
+            .map(|literal| literal.to_owned())
+    }
 
-        Err((
-            name.clone(),
-            Soo::Owned(format!("Undefined variable '{}'.", name.lexeme)),
-        ))
+    pub fn assign_at(
+        &mut self,
+        distance: usize,
+        name: &Token,
+        value: Literal,
+    ) -> Result<Literal, (Token, Soo)> {
+        self.ancestor(distance)
+            .borrow_mut()
+            .insert(name.lexeme.to_owned(), value.to_owned());
+        Ok(value)
+    }
+
+    pub fn assign_global(&mut self, name: &Token, value: Literal) -> Result<Literal, (Token, Soo)> {
+        let global = self.layers.get(0).unwrap();
+        if global.borrow().contains_key(&name.lexeme) {
+            global
+                .borrow_mut()
+                .insert(name.lexeme.to_owned(), value.to_owned());
+            Ok(value)
+        } else {
+            Err((
+                name.clone(),
+                Soo::Owned(format!("Undefined variable '{}'.", name.lexeme)),
+            ))
+        }
     }
 }

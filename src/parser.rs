@@ -1,11 +1,12 @@
 use std::iter::Peekable;
 use std::slice::Iter;
 
+use crate::expr::ExprKind;
 use crate::report;
 use crate::stmt::Stmt;
 use crate::token::Literal;
 use crate::token_type::TokenType::{self, *};
-use crate::utils::Soo;
+use crate::utils::{ExprId, Soo};
 use crate::{expr::Expr, token::Token};
 
 // parameters: token iterator, and a series of TokenType variants separated by |
@@ -32,13 +33,15 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, Vec<(Token, Soo)>> {
         None => 0,
     };
 
+    let mut id = ExprId::new();
+
     let token_iter = &mut tokens.iter().peekable();
 
     let mut statements = Vec::new();
     let mut errors = Vec::new();
     let mut had_error = false;
     while token_iter.peek().is_some() {
-        match declaration(line_count, token_iter, &mut had_error) {
+        match declaration(&mut id, line_count, token_iter, &mut had_error) {
             Ok(stmt) => statements.push(stmt),
             Err(error) => errors.push(error),
         };
@@ -52,14 +55,15 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, Vec<(Token, Soo)>> {
 }
 
 fn declaration(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Stmt, (Token, Soo)> {
     let result = match tokens.peek().unwrap().typ {
-        Fun => function("function", line_count, tokens, had_error),
-        Var => var_declaration(line_count, tokens, had_error),
-        _ => statement(line_count, tokens, had_error),
+        Fun => function("function", id, line_count, tokens, had_error),
+        Var => var_declaration(id, line_count, tokens, had_error),
+        _ => statement(id, line_count, tokens, had_error),
     };
 
     if result.is_err() {
@@ -70,6 +74,7 @@ fn declaration(
 
 fn function(
     kind: &str,
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
@@ -139,7 +144,7 @@ fn function(
         )?;
     }
 
-    let body = block(line_count, tokens, had_error)?;
+    let body = block(id, line_count, tokens, had_error)?;
     Ok(Stmt::Function(crate::stmt::Function {
         name: name.to_owned(),
         params: parameters,
@@ -148,6 +153,7 @@ fn function(
 }
 
 fn var_declaration(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
@@ -161,7 +167,7 @@ fn var_declaration(
                     Some(next_token) => match next_token.typ {
                         Equal => {
                             tokens.next();
-                            Some(Box::new(expression(line_count, tokens, had_error)?))
+                            Some(Box::new(expression(id, line_count, tokens, had_error)?))
                         }
                         _ => None,
                     },
@@ -199,27 +205,29 @@ fn var_declaration(
 }
 
 fn statement(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Stmt, (Token, Soo)> {
     match tokens.peek() {
         Some(next_token) => match next_token.typ {
-            For => for_statement(line_count, tokens, had_error),
-            If => if_statement(line_count, tokens, had_error),
-            Print => print_statement(line_count, tokens, had_error),
-            Return => return_statement(line_count, tokens, had_error),
-            While => while_statement(line_count, tokens, had_error),
+            For => for_statement(id, line_count, tokens, had_error),
+            If => if_statement(id, line_count, tokens, had_error),
+            Print => print_statement(id, line_count, tokens, had_error),
+            Return => return_statement(id, line_count, tokens, had_error),
+            While => while_statement(id, line_count, tokens, had_error),
             LeftBrace => Ok(Stmt::Block {
-                statements: block(line_count, tokens, had_error)?,
+                statements: block(id, line_count, tokens, had_error)?,
             }),
-            _ => expression_statement(line_count, tokens, had_error),
+            _ => expression_statement(id, line_count, tokens, had_error),
         },
         None => Err(error(line_count, tokens, "Expected a statement.".into())),
     }
 }
 
 fn for_statement(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
@@ -237,13 +245,13 @@ fn for_statement(
     let initializer = if let Some(_) = match_types!(tokens, Semicolon) {
         None
     } else if check(Var, tokens) {
-        Some(var_declaration(line_count, tokens, had_error)?)
+        Some(var_declaration(id, line_count, tokens, had_error)?)
     } else {
-        Some(expression_statement(line_count, tokens, had_error)?)
+        Some(expression_statement(id, line_count, tokens, had_error)?)
     };
 
     let condition = if !check(Semicolon, tokens) {
-        Some(expression(line_count, tokens, had_error)?)
+        Some(expression(id, line_count, tokens, had_error)?)
     } else {
         None
     };
@@ -256,7 +264,7 @@ fn for_statement(
     )?;
 
     let increment = if !check(RightParen, tokens) {
-        Some(expression(line_count, tokens, had_error)?)
+        Some(expression(id, line_count, tokens, had_error)?)
     } else {
         None
     };
@@ -268,7 +276,7 @@ fn for_statement(
         tokens,
     )?;
 
-    let mut body = statement(line_count, tokens, had_error)?;
+    let mut body = statement(id, line_count, tokens, had_error)?;
 
     if let Some(increment_expr) = increment {
         body = Stmt::Block {
@@ -281,9 +289,12 @@ fn for_statement(
         };
     }
 
-    let condition = condition.unwrap_or(Expr::LiteralExpr {
-        value: Literal::BoolLiteral(false),
-    });
+    let condition = condition.unwrap_or(Expr(
+        id.next(),
+        ExprKind::LiteralExpr {
+            value: Literal::BoolLiteral(false),
+        },
+    ));
     body = Stmt::While {
         condition: Box::new(condition),
         body: Box::new(body),
@@ -299,6 +310,7 @@ fn for_statement(
 }
 
 fn if_statement(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
@@ -308,14 +320,14 @@ fn if_statement(
     match tokens.next() {
         Some(left_paren) => match left_paren.typ {
             LeftParen => {
-                let condition = expression(line_count, tokens, had_error)?;
+                let condition = expression(id, line_count, tokens, had_error)?;
                 match tokens.next() {
                     Some(right_paren) => match right_paren.typ {
                         RightParen => {
-                            let then_branch = statement(line_count, tokens, had_error)?;
+                            let then_branch = statement(id, line_count, tokens, had_error)?;
                             let else_token = match_types!(tokens, Else);
                             let else_branch = match else_token {
-                                Some(_) => Some(statement(line_count, tokens, had_error)?),
+                                Some(_) => Some(statement(id, line_count, tokens, had_error)?),
                                 _ => None,
                             };
 
@@ -350,12 +362,13 @@ fn if_statement(
 }
 
 fn print_statement(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Stmt, (Token, Soo)> {
     tokens.next();
-    let value = expression(line_count, tokens, had_error)?;
+    let value = expression(id, line_count, tokens, had_error)?;
 
     match tokens.next() {
         Some(next_token) => match next_token.typ {
@@ -377,13 +390,14 @@ fn print_statement(
 }
 
 fn return_statement(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Stmt, (Token, Soo)> {
     let keyword = tokens.next().unwrap().to_owned();
     let value = if !check(Semicolon, tokens) {
-        Some(Box::new(expression(line_count, tokens, had_error)?))
+        Some(Box::new(expression(id, line_count, tokens, had_error)?))
     } else {
         None
     };
@@ -399,6 +413,7 @@ fn return_statement(
 }
 
 fn while_statement(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
@@ -408,11 +423,11 @@ fn while_statement(
     match tokens.next() {
         Some(left_paren) => match left_paren.typ {
             LeftParen => {
-                let condition = expression(line_count, tokens, had_error)?;
+                let condition = expression(id, line_count, tokens, had_error)?;
                 match tokens.next() {
                     Some(right_paren) => match right_paren.typ {
                         RightParen => {
-                            let body = statement(line_count, tokens, had_error)?;
+                            let body = statement(id, line_count, tokens, had_error)?;
 
                             Ok(Stmt::While {
                                 condition: Box::new(condition),
@@ -447,6 +462,7 @@ fn while_statement(
 }
 
 fn block(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
@@ -461,7 +477,7 @@ fn block(
                 return Ok(statements);
             }
             _ => {
-                let stmt = declaration(line_count, tokens, had_error)?;
+                let stmt = declaration(id, line_count, tokens, had_error)?;
                 statements.push(stmt);
             }
         };
@@ -475,11 +491,12 @@ fn block(
 }
 
 fn expression_statement(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Stmt, (Token, Soo)> {
-    let expression = expression(line_count, tokens, had_error)?;
+    let expression = expression(id, line_count, tokens, had_error)?;
 
     match tokens.next() {
         Some(next_token) => match next_token.typ {
@@ -501,31 +518,36 @@ fn expression_statement(
 }
 
 fn expression(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
-    assignment(line_count, tokens, had_error)
+    assignment(id, line_count, tokens, had_error)
 }
 
 fn assignment(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
-    let expr = or(line_count, tokens, had_error)?;
+    let expr = or(id, line_count, tokens, had_error)?;
 
     match tokens.peek() {
         Some(token) => match token.typ {
             Equal => {
                 tokens.next();
-                let value = assignment(line_count, tokens, had_error)?;
+                let value = assignment(id, line_count, tokens, had_error)?;
 
-                match expr {
-                    Expr::Variable { name } => Ok(Expr::Assign {
-                        name,
-                        value: Box::new(value),
-                    }),
+                match expr.1 {
+                    ExprKind::Variable { name } => Ok(Expr(
+                        id.next(),
+                        ExprKind::Assign {
+                            name,
+                            value: Box::new(value),
+                        },
+                    )),
                     _ => {
                         error(line_count, tokens, "Invalid assignment target.".into());
                         Ok(expr)
@@ -539,152 +561,181 @@ fn assignment(
 }
 
 fn or(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
-    let mut expr = and(line_count, tokens, had_error)?;
+    let mut expr = and(id, line_count, tokens, had_error)?;
 
     while let Some(operator) = match_types!(tokens, Or) {
         let operator = operator.to_owned();
-        let right = and(line_count, tokens, had_error)?;
-        expr = Expr::Logical {
-            left: Box::new(expr),
-            operator,
-            right: Box::new(right),
-        };
+        let right = and(id, line_count, tokens, had_error)?;
+        expr = Expr(
+            id.next(),
+            ExprKind::Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            },
+        );
     }
 
     Ok(expr)
 }
 
 fn and(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
-    let mut expr = equality(line_count, tokens, had_error)?;
+    let mut expr = equality(id, line_count, tokens, had_error)?;
 
     while let Some(operator) = match_types!(tokens, And) {
         let operator = operator.to_owned();
-        let right = and(line_count, tokens, had_error)?;
-        expr = Expr::Logical {
-            left: Box::new(expr),
-            operator,
-            right: Box::new(right),
-        };
+        let right = and(id, line_count, tokens, had_error)?;
+        expr = Expr(
+            id.next(),
+            ExprKind::Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            },
+        );
     }
 
     Ok(expr)
 }
 
 fn equality(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
-    let mut expr = comparison(line_count, tokens, had_error)?;
+    let mut expr = comparison(id, line_count, tokens, had_error)?;
 
     while let Some(operator) = match_types!(tokens, BangEqual | EqualEqual) {
         let operator = operator.to_owned();
-        let right = comparison(line_count, tokens, had_error)?;
-        expr = Expr::Binary {
-            left: Box::new(expr),
-            operator,
-            right: Box::new(right),
-        };
+        let right = comparison(id, line_count, tokens, had_error)?;
+        expr = Expr(
+            id.next(),
+            ExprKind::Binary {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            },
+        );
     }
 
     Ok(expr)
 }
 
 fn comparison(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
-    let mut expr = term(line_count, tokens, had_error)?;
+    let mut expr = term(id, line_count, tokens, had_error)?;
 
     while let Some(operator) = match_types!(tokens, Greater | GreaterEqual | Less | LessEqual) {
         let operator = operator.to_owned();
-        let right = term(line_count, tokens, had_error)?;
-        expr = Expr::Binary {
-            left: Box::new(expr),
-            operator,
-            right: Box::new(right),
-        };
+        let right = term(id, line_count, tokens, had_error)?;
+        expr = Expr(
+            id.next(),
+            ExprKind::Binary {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            },
+        );
     }
 
     Ok(expr)
 }
 
 fn term(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
-    let mut expr = factor(line_count, tokens, had_error);
+    let mut expr = factor(id, line_count, tokens, had_error);
 
     while let Some(operator) = match_types!(tokens, Minus | Plus) {
         let operator = operator.to_owned();
-        let right = factor(line_count, tokens, had_error);
-        expr = Ok(Expr::Binary {
-            left: Box::new(expr?),
-            operator,
-            right: Box::new(right?),
-        });
+        let right = factor(id, line_count, tokens, had_error);
+        expr = Ok(Expr(
+            id.next(),
+            ExprKind::Binary {
+                left: Box::new(expr?),
+                operator,
+                right: Box::new(right?),
+            },
+        ));
     }
 
     expr
 }
 
 fn factor(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
-    let mut expr = unary(line_count, tokens, had_error);
+    let mut expr = unary(id, line_count, tokens, had_error);
 
     while let Some(operator) = match_types!(tokens, Slash | Star) {
         let operator = operator.to_owned();
-        let right = unary(line_count, tokens, had_error);
-        expr = Ok(Expr::Binary {
-            left: Box::new(expr?),
-            operator,
-            right: Box::new(right?),
-        });
+        let right = unary(id, line_count, tokens, had_error);
+        expr = Ok(Expr(
+            id.next(),
+            ExprKind::Binary {
+                left: Box::new(expr?),
+                operator,
+                right: Box::new(right?),
+            },
+        ));
     }
 
     expr
 }
 
 fn unary(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
     if let Some(operator) = match_types!(tokens, Bang | Minus) {
         let operator = operator.to_owned();
-        let right = unary(line_count, tokens, had_error);
-        Ok(Expr::Unary {
-            operator,
-            right: Box::new(right?),
-        })
+        let right = unary(id, line_count, tokens, had_error);
+        Ok(Expr(
+            id.next(),
+            ExprKind::Unary {
+                operator,
+                right: Box::new(right?),
+            },
+        ))
     } else {
-        call(line_count, tokens, had_error)
+        call(id, line_count, tokens, had_error)
     }
 }
 
 fn call(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
-    let mut expr = primary(line_count, tokens, had_error)?;
+    let mut expr = primary(id, line_count, tokens, had_error)?;
 
     loop {
         if let Some(_) = match_types!(tokens, LeftParen) {
-            expr = finish_call(expr, line_count, tokens, had_error)?;
+            expr = finish_call(id, expr, line_count, tokens, had_error)?;
         } else {
             break;
         }
@@ -694,6 +745,7 @@ fn call(
 }
 
 fn finish_call(
+    id: &mut ExprId,
     callee: Expr,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
@@ -712,7 +764,7 @@ fn finish_call(
                 );
             }
 
-            arguments.push(expression(line_count, tokens, had_error)?);
+            arguments.push(expression(id, line_count, tokens, had_error)?);
             if !match_types!(tokens, Comma).is_some() {
                 break;
             }
@@ -728,43 +780,65 @@ fn finish_call(
     )?
     .to_owned();
 
-    Ok(Expr::Call {
-        callee: Box::new(callee),
-        paren,
-        arguments,
-    })
+    Ok(Expr(
+        id.next(),
+        ExprKind::Call {
+            callee: Box::new(callee),
+            paren,
+            arguments,
+        },
+    ))
 }
 
 fn primary(
+    id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
     had_error: &mut bool,
 ) -> Result<Expr, (Token, Soo)> {
     match tokens.next() {
         Some(token) => match token.typ {
-            False => Ok(Expr::LiteralExpr {
-                value: Literal::BoolLiteral(false),
-            }),
-            True => Ok(Expr::LiteralExpr {
-                value: Literal::BoolLiteral(true),
-            }),
-            Nil => Ok(Expr::LiteralExpr {
-                value: Literal::None,
-            }),
-            Number | StringToken => Ok(Expr::LiteralExpr {
-                value: token.literal.clone(),
-            }),
-            Identifier => Ok(Expr::Variable {
-                name: token.to_owned(),
-            }),
+            False => Ok(Expr(
+                id.next(),
+                ExprKind::LiteralExpr {
+                    value: Literal::BoolLiteral(false),
+                },
+            )),
+            True => Ok(Expr(
+                id.next(),
+                ExprKind::LiteralExpr {
+                    value: Literal::BoolLiteral(true),
+                },
+            )),
+            Nil => Ok(Expr(
+                id.next(),
+                ExprKind::LiteralExpr {
+                    value: Literal::None,
+                },
+            )),
+            Number | StringToken => Ok(Expr(
+                id.next(),
+                ExprKind::LiteralExpr {
+                    value: token.literal.clone(),
+                },
+            )),
+            Identifier => Ok(Expr(
+                id.next(),
+                ExprKind::Variable {
+                    name: token.to_owned(),
+                },
+            )),
             LeftParen => {
-                let expr = expression(line_count, tokens, had_error);
+                let expr = expression(id, line_count, tokens, had_error);
 
                 match tokens.next() {
                     Some(next_token) => match next_token.typ {
-                        RightParen => Ok(Expr::Grouping {
-                            expression: Box::new(expr?),
-                        }),
+                        RightParen => Ok(Expr(
+                            id.next(),
+                            ExprKind::Grouping {
+                                expression: Box::new(expr?),
+                            },
+                        )),
                         _ => Err(error(
                             line_count,
                             tokens,
