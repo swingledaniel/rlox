@@ -14,6 +14,10 @@ pub enum ExprKind {
         operator: Token,
         right: Box<Expr>,
     },
+    Get {
+        object: Box<Expr>,
+        name: Token,
+    },
     Call {
         callee: Box<Expr>,
         paren: Token,
@@ -29,6 +33,11 @@ pub enum ExprKind {
         left: Box<Expr>,
         operator: Token,
         right: Box<Expr>,
+    },
+    Set {
+        object: Box<Expr>,
+        name: Token,
+        value: Box<Expr>,
     },
     Unary {
         operator: Token,

@@ -1,17 +1,19 @@
 use crate::callable::Callable;
+use crate::instance::Instance;
 use crate::token_type::TokenType;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum Literal {
     BoolLiteral(bool),
-    FunctionLiteral(Callable),
+    CallableLiteral(Callable),
     F64(f64),
     IdentifierLiteral(String),
+    InstanceLiteral(Instance),
     StringLiteral(String),
     None,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Token {
     pub typ: TokenType,
     pub lexeme: String,

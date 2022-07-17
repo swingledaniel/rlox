@@ -61,7 +61,11 @@ fn declaration(
     had_error: &mut bool,
 ) -> Result<Stmt, (Token, Soo)> {
     let result = match tokens.peek().unwrap().typ {
-        Fun => function("function", id, line_count, tokens, had_error),
+        Class => class_declaration(id, line_count, tokens, had_error),
+        Fun => {
+            tokens.next();
+            function("function", id, line_count, tokens, had_error).map(|f| Stmt::Function(f))
+        }
         Var => var_declaration(id, line_count, tokens, had_error),
         _ => statement(id, line_count, tokens, had_error),
     };
@@ -72,8 +76,7 @@ fn declaration(
     result
 }
 
-fn function(
-    kind: &str,
+fn class_declaration(
     id: &mut ExprId,
     line_count: usize,
     tokens: &mut Peekable<Iter<Token>>,
@@ -81,6 +84,45 @@ fn function(
 ) -> Result<Stmt, (Token, Soo)> {
     tokens.next();
 
+    let name = consume(
+        Identifier,
+        "Expected class name, instead found end of file".into(),
+        "Expected class name.".into(),
+        line_count,
+        tokens,
+    )?
+    .clone();
+    consume(
+        LeftBrace,
+        "Expect '{' before class body, instead found end of file.".into(),
+        "Expect '{' before class body.".into(),
+        line_count,
+        tokens,
+    )?;
+
+    let mut methods = Vec::new();
+    while !check(RightBrace, tokens) && tokens.peek().is_some() {
+        methods.push(function("method", id, line_count, tokens, had_error)?);
+    }
+
+    consume(
+        RightBrace,
+        "Expected '}' after class body, instead found end of file.".into(),
+        "Expected '}' after class body.".into(),
+        line_count,
+        tokens,
+    )?;
+
+    Ok(Stmt::Class { name, methods })
+}
+
+fn function(
+    kind: &str,
+    id: &mut ExprId,
+    line_count: usize,
+    tokens: &mut Peekable<Iter<Token>>,
+    had_error: &mut bool,
+) -> Result<crate::stmt::Function, (Token, Soo)> {
     let name = consume(
         Identifier,
         format!("Expected {kind} name, instead found end of file.").into(),
@@ -145,11 +187,11 @@ fn function(
     }
 
     let body = block(id, line_count, tokens, had_error)?;
-    Ok(Stmt::Function(crate::stmt::Function {
+    Ok(crate::stmt::Function {
         name: name.to_owned(),
         params: parameters,
         body,
-    }))
+    })
 }
 
 fn var_declaration(
@@ -541,6 +583,14 @@ fn assignment(
                 let value = assignment(id, line_count, tokens, had_error)?;
 
                 match expr.1 {
+                    ExprKind::Get { object, name } => Ok(Expr(
+                        id.next(),
+                        ExprKind::Set {
+                            object,
+                            name,
+                            value: Box::new(value),
+                        },
+                    )),
                     ExprKind::Variable { name } => Ok(Expr(
                         id.next(),
                         ExprKind::Assign {
@@ -736,6 +786,21 @@ fn call(
     loop {
         if let Some(_) = match_types!(tokens, LeftParen) {
             expr = finish_call(id, expr, line_count, tokens, had_error)?;
+        } else if let Some(_) = match_types!(tokens, Dot) {
+            let name = consume(
+                Identifier,
+                "Expected property name after '.', instead found end of file.".into(),
+                "Expected property name after '.'.".into(),
+                line_count,
+                tokens,
+            )?;
+            expr = Expr(
+                id.next(),
+                ExprKind::Get {
+                    object: Box::new(expr),
+                    name: name.to_owned(),
+                },
+            );
         } else {
             break;
         }

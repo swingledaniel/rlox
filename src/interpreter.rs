@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::callable::{Callable, CallableKind};
 use crate::environment::Environment;
 use crate::runtime_error;
@@ -23,7 +25,8 @@ pub fn interpret(statements: Vec<Stmt>, environment: &mut Environment) -> bool {
 fn stringify(literal: Literal) -> String {
     match literal {
         BoolLiteral(b) => b.to_string(),
-        FunctionLiteral(function) => match function.kind {
+        CallableLiteral(function) => match function.kind {
+            CallableKind::Class(class) => class.to_string(),
             CallableKind::Function {
                 declaration,
                 closure: _,
@@ -38,6 +41,7 @@ fn stringify(literal: Literal) -> String {
             }
         }
         IdentifierLiteral(ident) => ident,
+        InstanceLiteral(instance) => instance.to_string(),
         StringLiteral(s) => s,
         None => "nil".to_owned(),
     }
@@ -53,11 +57,28 @@ impl Interpreter for Stmt {
             Stmt::Block { statements } => {
                 execute_block(statements, environment)?;
             }
+            Stmt::Class {
+                name,
+                methods: stmt_methods,
+            } => {
+                environment.define(&name.lexeme, Literal::None);
+
+                let mut methods = HashMap::new();
+                for method in stmt_methods {
+                    let function = Callable::new_function(method, environment.clone());
+                    methods.insert(method.name.lexeme.to_owned(), function);
+                }
+
+                environment.assign(
+                    name,
+                    CallableLiteral(Callable::new_class(name.lexeme.to_owned(), methods)),
+                )?;
+            }
             Stmt::Expression { expression } => {
                 expression.interpret(environment)?;
             }
             Stmt::Function(stmt) => {
-                let function = FunctionLiteral(Callable::new_function(stmt, environment.clone()));
+                let function = CallableLiteral(Callable::new_function(stmt, environment.clone()));
                 environment.define(&stmt.name.lexeme, function);
             }
             Stmt::If {
@@ -181,7 +202,7 @@ impl Interpreter for Expr {
                 }
 
                 match callee {
-                    FunctionLiteral(function) => {
+                    CallableLiteral(function) => {
                         if func_args.len() != function.arity {
                             Err((
                                 paren.clone(),
@@ -198,6 +219,10 @@ impl Interpreter for Expr {
                     _ => Err((paren.clone(), "Can only call functions and classes.".into())),
                 }
             }
+            ExprKind::Get { object, name } => match object.interpret(environment)? {
+                InstanceLiteral(mut instance) => instance.get(name),
+                _ => Err((name.clone(), "Only instances have properties.".into())),
+            },
             ExprKind::Grouping { expression } => expression.interpret(environment),
             ExprKind::LiteralExpr { value } => Ok(value.clone()),
             ExprKind::Logical {
@@ -222,6 +247,18 @@ impl Interpreter for Expr {
 
                 right.interpret(environment)
             }
+            ExprKind::Set {
+                object,
+                name,
+                value,
+            } => match object.interpret(environment)? {
+                InstanceLiteral(mut instance) => {
+                    let value = value.interpret(environment)?;
+                    instance.set(name, value.to_owned());
+                    Ok(value)
+                }
+                _ => Err((name.clone(), "Only instances have fields.".into())),
+            },
             ExprKind::Unary { operator, right } => {
                 let right = right.interpret(environment)?;
                 match operator.typ {
@@ -312,13 +349,18 @@ fn lookup_variable(
 ) -> Result<Literal, (Token, Soo)> {
     match environment.locals.get(&id) {
         Some(distance) => Ok(environment.get_at(*distance, &name.lexeme).unwrap()),
-        _ => Ok(environment
+        _ => match environment
             .layers
             .get(0)
             .unwrap()
             .borrow_mut()
             .get(&name.lexeme)
-            .unwrap()
-            .to_owned()),
+        {
+            Some(var) => Ok(var.to_owned()),
+            _ => Err((
+                name.clone(),
+                format!("Unable to resolve global variable '{}'.", name.lexeme).into(),
+            )),
+        },
     }
 }

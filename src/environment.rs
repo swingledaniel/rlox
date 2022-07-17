@@ -24,7 +24,7 @@ impl Environment {
         // define native functions
         env.define(
             "clock",
-            Literal::FunctionLiteral(Callable {
+            Literal::CallableLiteral(Callable {
                 arity: 0,
                 parameters: Vec::new(),
                 kind: CallableKind::Native("clock"),
@@ -71,6 +71,22 @@ impl Environment {
             .borrow_mut()
             .insert(name.lexeme.to_owned(), value.to_owned());
         Ok(value)
+    }
+
+    pub fn assign(&mut self, name: &Token, value: Literal) -> Result<Literal, (Token, Soo)> {
+        for values in self.layers.iter_mut().rev() {
+            if values.borrow().contains_key(&name.lexeme) {
+                values
+                    .borrow_mut()
+                    .insert(name.lexeme.to_owned(), value.to_owned());
+                return Ok(value);
+            }
+        }
+
+        Err((
+            name.clone(),
+            Soo::Owned(format!("Undefined variable '{}'.", name.lexeme)),
+        ))
     }
 
     pub fn assign_global(&mut self, name: &Token, value: Literal) -> Result<Literal, (Token, Soo)> {

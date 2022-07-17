@@ -1,9 +1,14 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::{
+    class::Class,
     environment::Environment,
+    instance::Instance,
     interpreter::execute_statements,
-    stmt::{self},
+    stmt,
     token::{Literal, Token},
     utils::Soo,
 };
@@ -17,6 +22,7 @@ pub struct Callable {
 
 #[derive(Clone, Debug)]
 pub enum CallableKind {
+    Class(crate::class::Class),
     Function {
         declaration: Box<stmt::Function>,
         closure: Environment,
@@ -40,8 +46,17 @@ impl Callable {
         }
     }
 
+    pub fn new_class(name: String, methods: HashMap<String, Callable>) -> Self {
+        Callable {
+            arity: 0,
+            parameters: Vec::new(),
+            kind: CallableKind::Class(Class::new(name, methods)),
+        }
+    }
+
     pub fn call(self, arguments: Vec<Literal>) -> Result<Literal, (Token, Soo)> {
         match self.kind {
+            CallableKind::Class(class) => Ok(Literal::InstanceLiteral(Instance::new(class))),
             CallableKind::Function {
                 mut declaration,
                 mut closure,

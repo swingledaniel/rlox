@@ -11,6 +11,7 @@ use crate::{
 
 pub enum FunctionType {
     Function,
+    Method,
 }
 
 trait Resolver {
@@ -34,6 +35,19 @@ impl Resolver for Stmt {
                 begin_scope(environment);
                 resolve_statements(statements, environment, type_stack, had_error)?;
                 end_scope(environment);
+                Ok(())
+            }
+            Stmt::Class { name, methods } => {
+                declare(name, environment, had_error);
+                define(name, environment);
+
+                for method in methods {
+                    let declaration = FunctionType::Method;
+                    type_stack.push(declaration);
+                    resolve_function(method, environment, type_stack, had_error)?;
+                    type_stack.pop();
+                }
+
                 Ok(())
             }
             Stmt::Expression { expression } => {
@@ -123,6 +137,7 @@ impl Resolver for Expr {
 
                 Ok(())
             },
+            ExprKind::Get { object, name: _ } => object.resolve(environment, type_stack, had_error),
             ExprKind::Grouping { expression } => expression.resolve(environment, type_stack, had_error),
             ExprKind::LiteralExpr { value: _ } => Ok(()),
             ExprKind::Logical {
@@ -133,6 +148,10 @@ impl Resolver for Expr {
                 left.resolve(environment, type_stack, had_error)?;
                 right.resolve(environment, type_stack, had_error)
             },
+            ExprKind::Set { object, name: _, value } => {
+                value.resolve(environment, type_stack, had_error)?;
+                object.resolve(environment, type_stack, had_error)
+            }
             ExprKind::Unary { operator: _, right } => right.resolve(environment, type_stack, had_error),
             ExprKind::Variable { name } => {
                 if let Some(scope) = environment.scopes.last_mut() && scope.get(&name.lexeme).is_some_and(|&&b| !b) {

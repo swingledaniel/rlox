@@ -12,7 +12,8 @@ impl fmt::Display for Literal {
             Literal::BoolLiteral(b) => {
                 write!(f, "{}", b)
             }
-            Literal::FunctionLiteral(function) => match &function.kind {
+            Literal::CallableLiteral(function) => match &function.kind {
+                CallableKind::Class(class) => write!(f, "{}", class.to_string()),
                 CallableKind::Function {
                     declaration,
                     closure: _,
@@ -24,6 +25,9 @@ impl fmt::Display for Literal {
             }
             Literal::IdentifierLiteral(identifier) => {
                 write!(f, "{}", identifier)
+            }
+            Literal::InstanceLiteral(instance) => {
+                write!(f, "{}", instance.to_string())
             }
             Literal::StringLiteral(s) => {
                 write!(f, "{}", s)
@@ -69,6 +73,8 @@ impl fmt::Display for Expr {
                 })?;
                 write!(f, ")")
             }
+            ExprKind::Get { object, name } => write!(f, "{object}.{name}"),
+
             ExprKind::Grouping { expression } => {
                 write!(f, "(group {expression})")
             }
@@ -82,6 +88,11 @@ impl fmt::Display for Expr {
             } => {
                 write!(f, "{left} {operator} {right}")
             }
+            ExprKind::Set {
+                object,
+                name,
+                value,
+            } => write!(f, "{object}.{name} = {value}"),
             ExprKind::Unary { operator, right } => {
                 write!(f, "({operator} {right})")
             }
