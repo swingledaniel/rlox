@@ -85,6 +85,7 @@ fn run(source: &str, environment: &mut Environment) -> (bool, bool) {
                 &mut statements,
                 environment,
                 &mut Vec::new(),
+                &mut Vec::new(),
                 &mut had_error,
             )
             .is_err()

@@ -17,6 +17,7 @@ impl fmt::Display for Literal {
                 CallableKind::Function {
                     declaration,
                     closure: _,
+                    is_initializer: _,
                 } => write!(f, "{}", declaration.name),
                 CallableKind::Native(name) => write!(f, "{name}"),
             },
@@ -93,6 +94,7 @@ impl fmt::Display for Expr {
                 name,
                 value,
             } => write!(f, "{object}.{name} = {value}"),
+            ExprKind::This { keyword: _ } => write!(f, "this"),
             ExprKind::Unary { operator, right } => {
                 write!(f, "({operator} {right})")
             }

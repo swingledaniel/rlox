@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Instance {
-    class: Class,
+    pub class: Class,
     fields: Rc<RefCell<HashMap<String, Literal>>>,
 }
 
@@ -24,7 +24,10 @@ impl Instance {
         match self.fields.borrow_mut().get(&name.lexeme) {
             Some(value) => Ok(value.clone()),
             _ => match self.class.find_method(&name.lexeme) {
-                Some(method) => Ok(Literal::CallableLiteral(method)),
+                Some(mut method) => {
+                    method.bind(self.clone());
+                    Ok(Literal::CallableLiteral(method))
+                }
                 _ => Err((
                     name.clone(),
                     format!("Undefined property '{}'.", name.lexeme).into(),

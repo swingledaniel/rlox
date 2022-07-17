@@ -30,6 +30,7 @@ fn stringify(literal: Literal) -> String {
             CallableKind::Function {
                 declaration,
                 closure: _,
+                is_initializer: _,
             } => format!("<fn {}>", declaration.name.lexeme),
             CallableKind::Native(_) => "<native fn>".to_owned(),
         },
@@ -65,7 +66,11 @@ impl Interpreter for Stmt {
 
                 let mut methods = HashMap::new();
                 for method in stmt_methods {
-                    let function = Callable::new_function(method, environment.clone());
+                    let function = Callable::new_function(
+                        method,
+                        environment.clone(),
+                        method.name.lexeme == "init",
+                    );
                     methods.insert(method.name.lexeme.to_owned(), function);
                 }
 
@@ -78,7 +83,8 @@ impl Interpreter for Stmt {
                 expression.interpret(environment)?;
             }
             Stmt::Function(stmt) => {
-                let function = CallableLiteral(Callable::new_function(stmt, environment.clone()));
+                let function =
+                    CallableLiteral(Callable::new_function(stmt, environment.clone(), false));
                 environment.define(&stmt.name.lexeme, function);
             }
             Stmt::If {
@@ -259,6 +265,7 @@ impl Interpreter for Expr {
                 }
                 _ => Err((name.clone(), "Only instances have fields.".into())),
             },
+            ExprKind::This { keyword } => lookup_variable(keyword, self.0, environment),
             ExprKind::Unary { operator, right } => {
                 let right = right.interpret(environment)?;
                 match operator.typ {

@@ -26,12 +26,17 @@ pub enum CallableKind {
     Function {
         declaration: Box<stmt::Function>,
         closure: Environment,
+        is_initializer: bool,
     },
     Native(&'static str),
 }
 
 impl Callable {
-    pub fn new_function(declaration: &mut stmt::Function, closure: Environment) -> Self {
+    pub fn new_function(
+        declaration: &mut stmt::Function,
+        closure: Environment,
+        is_initializer: bool,
+    ) -> Self {
         Callable {
             arity: declaration.params.len(),
             parameters: declaration
@@ -42,13 +47,14 @@ impl Callable {
             kind: CallableKind::Function {
                 declaration: Box::new(declaration.clone()),
                 closure,
+                is_initializer,
             },
         }
     }
 
     pub fn new_class(name: String, methods: HashMap<String, Callable>) -> Self {
         Callable {
-            arity: 0,
+            arity: methods.get("init").map(|f| f.arity).unwrap_or(0),
             parameters: Vec::new(),
             kind: CallableKind::Class(Class::new(name, methods)),
         }
@@ -56,10 +62,19 @@ impl Callable {
 
     pub fn call(self, arguments: Vec<Literal>) -> Result<Literal, (Token, Soo)> {
         match self.kind {
-            CallableKind::Class(class) => Ok(Literal::InstanceLiteral(Instance::new(class))),
+            CallableKind::Class(class) => {
+                let mut instance = Instance::new(class);
+                if let Some(mut initializer) = instance.class.find_method("init") {
+                    initializer.bind(instance.clone());
+                    initializer.call(arguments)?;
+                }
+
+                Ok(Literal::InstanceLiteral(instance))
+            }
             CallableKind::Function {
                 mut declaration,
                 mut closure,
+                is_initializer,
             } => {
                 closure.add_scope();
                 for (param, arg) in self.parameters.iter().zip(arguments.into_iter()) {
@@ -69,7 +84,13 @@ impl Callable {
                 match execute_statements(&mut declaration.body, &mut closure) {
                     Err((token, message)) => {
                         return match (token.typ, token.lexeme.as_str()) {
-                            (crate::token_type::TokenType::Return, "RETURN") => Ok(token.literal),
+                            (crate::token_type::TokenType::Return, "RETURN") => {
+                                if is_initializer {
+                                    Ok(closure.get_at(0, "this").unwrap())
+                                } else {
+                                    Ok(token.literal)
+                                }
+                            }
                             _ => Err((token, message)),
                         }
                     }
@@ -77,7 +98,12 @@ impl Callable {
                 };
 
                 closure.del_scope();
-                Ok(Literal::None)
+
+                if is_initializer {
+                    Ok(closure.get_at(0, "this").unwrap())
+                } else {
+                    Ok(Literal::None)
+                }
             }
             CallableKind::Native(name) => match name {
                 "clock" => Ok(Literal::F64(
@@ -89,6 +115,20 @@ impl Callable {
                 )),
                 _ => unimplemented!(),
             },
+        }
+    }
+
+    pub fn bind(&mut self, instance: Instance) {
+        match &mut self.kind {
+            CallableKind::Function {
+                declaration: _,
+                closure,
+                is_initializer: _,
+            } => {
+                closure.add_scope();
+                closure.define("this", Literal::InstanceLiteral(instance));
+            }
+            _ => panic!("Bind called for class or native function"),
         }
     }
 }

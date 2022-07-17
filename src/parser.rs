@@ -887,6 +887,12 @@ fn primary(
                     value: token.literal.clone(),
                 },
             )),
+            This => Ok(Expr(
+                id.next(),
+                ExprKind::This {
+                    keyword: token.to_owned(),
+                },
+            )),
             Identifier => Ok(Expr(
                 id.next(),
                 ExprKind::Variable {
