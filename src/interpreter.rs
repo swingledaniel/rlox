@@ -256,7 +256,7 @@ impl Interpreter for Expr {
                                 )),
                             ))
                         } else {
-                            function.call(func_args)
+                            function.call(func_args, paren)
                         }
                     }
                     _ => Err((paren.clone(), "Can only call functions and classes.".into())),

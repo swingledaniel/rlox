@@ -64,13 +64,13 @@ impl Callable {
         }
     }
 
-    pub fn call(self, arguments: Vec<Literal>) -> Result<Literal, (Token, Soo)> {
+    pub fn call(self, arguments: Vec<Literal>, token: &Token) -> Result<Literal, (Token, Soo)> {
         match self.kind {
             CallableKind::Class(class) => {
                 let mut instance = Instance::new(class);
                 if let Some(mut initializer) = instance.class.find_method("init") {
                     initializer.bind(instance.clone());
-                    initializer.call(arguments)?;
+                    initializer.call(arguments, token)?;
                 }
 
                 Ok(Literal::InstanceLiteral(instance))
@@ -117,7 +117,39 @@ impl Callable {
                         .as_millis() as f64
                         / 1000.0,
                 )),
-                _ => unimplemented!(),
+                "getchar" => match &arguments[..] {
+                    [Literal::StringLiteral(s), Literal::F64(i)] => {
+                        if i.fract() == 0.0 && *i >= 0.0 {
+                            match s.chars().nth(*i as usize) {
+                                Some(c) => Ok(Literal::StringLiteral(c.to_string())),
+                                _ => Err((token.clone(), "String index out of range.".into())),
+                            }
+                        } else {
+                            Err((token.clone(), "String index is invalid.".into()))
+                        }
+                    }
+                    _ => Err((
+                        token.clone(),
+                        "Invalid function arguments, 'getchar' accepts a string and an index."
+                            .into(),
+                    )),
+                },
+                "int" => match arguments.get(0).unwrap() {
+                    Literal::F64(n) => Ok(Literal::F64((*n as i64) as f64)),
+                    Literal::StringLiteral(s) => match s.parse::<f64>() {
+                        Ok(f) => Ok(Literal::F64(f)),
+                        Err(_) => Err((
+                            token.clone(),
+                            "Unable to parse provided string as a number.".into(),
+                        )),
+                    },
+                    _ => Err((
+                        token.clone(),
+                        "Invalid function arguments, 'int' accepts a single number or string."
+                            .into(),
+                    )),
+                },
+                _ => unimplemented!("Native function '{}' has not been implemented", name),
             },
         }
     }

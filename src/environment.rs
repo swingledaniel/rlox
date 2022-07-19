@@ -31,6 +31,24 @@ impl Environment {
             }),
         );
 
+        env.define(
+            "getchar",
+            Literal::CallableLiteral(Callable {
+                arity: 2,
+                parameters: vec!["s".to_string(), "index".to_string()],
+                kind: CallableKind::Native("getchar"),
+            }),
+        );
+
+        env.define(
+            "int",
+            Literal::CallableLiteral(Callable {
+                arity: 1,
+                parameters: vec!["n".to_string()],
+                kind: CallableKind::Native("int"),
+            }),
+        );
+
         env
     }
 
