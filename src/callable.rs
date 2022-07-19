@@ -52,11 +52,15 @@ impl Callable {
         }
     }
 
-    pub fn new_class(name: String, methods: HashMap<String, Callable>) -> Self {
+    pub fn new_class(
+        name: String,
+        superclass: Option<crate::class::Class>,
+        methods: HashMap<String, Callable>,
+    ) -> Self {
         Callable {
             arity: methods.get("init").map(|f| f.arity).unwrap_or(0),
             parameters: Vec::new(),
-            kind: CallableKind::Class(Class::new(name, methods)),
+            kind: CallableKind::Class(Class::new(name, superclass, methods)),
         }
     }
 

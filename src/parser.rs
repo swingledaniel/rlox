@@ -92,6 +92,25 @@ fn class_declaration(
         tokens,
     )?
     .clone();
+
+    let superclass = if match_types!(tokens, Less).is_some() {
+        Some(Box::new(Expr(
+            id.next(),
+            ExprKind::Variable {
+                name: consume(
+                    Identifier,
+                    "Expected superclass name, instead found end of file.".into(),
+                    "Expected superclass name.".into(),
+                    line_count,
+                    tokens,
+                )?
+                .to_owned(),
+            },
+        )))
+    } else {
+        None
+    };
+
     consume(
         LeftBrace,
         "Expect '{' before class body, instead found end of file.".into(),
@@ -113,7 +132,11 @@ fn class_declaration(
         tokens,
     )?;
 
-    Ok(Stmt::Class { name, methods })
+    Ok(Stmt::Class {
+        name,
+        superclass,
+        methods,
+    })
 }
 
 fn function(
@@ -887,6 +910,25 @@ fn primary(
                     value: token.literal.clone(),
                 },
             )),
+            Super => {
+                let keyword = token.to_owned();
+                consume(
+                    Dot,
+                    "Expected '.' after 'super', instead found end of file.".into(),
+                    "Expected '.' after 'super'.".into(),
+                    line_count,
+                    tokens,
+                )?;
+                let method = consume(
+                    Identifier,
+                    "Expected superclass method name, instead found end of file.".into(),
+                    "Expected superclass method name.".into(),
+                    line_count,
+                    tokens,
+                )?
+                .to_owned();
+                Ok(Expr(id.next(), ExprKind::Super { keyword, method }))
+            }
             This => Ok(Expr(
                 id.next(),
                 ExprKind::This {

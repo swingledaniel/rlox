@@ -60,9 +60,43 @@ impl Interpreter for Stmt {
             }
             Stmt::Class {
                 name,
+                superclass: stmt_superclass,
                 methods: stmt_methods,
             } => {
+                let superclass = match stmt_superclass {
+                    Some(expr) => match expr.interpret(environment)? {
+                        CallableLiteral(Callable {
+                            arity: _,
+                            parameters: _,
+                            kind: CallableKind::Class(class),
+                        }) => Some(class),
+                        _ => {
+                            let superclass_name = match &expr.1 {
+                                ExprKind::Variable { name } => name,
+                                _ => panic!("Superclass was not a variable."),
+                            };
+                            return Err((
+                                superclass_name.clone(),
+                                "Superclass must be a class.".into(),
+                            ));
+                        }
+                    },
+                    _ => Option::None,
+                };
+
                 environment.define(&name.lexeme, Literal::None);
+
+                if let Some(value) = superclass.to_owned() {
+                    environment.add_scope();
+                    environment.define(
+                        "super",
+                        CallableLiteral(Callable::new_class(
+                            value.name,
+                            value.superclass.map(|c| *c),
+                            value.methods,
+                        )),
+                    );
+                }
 
                 let mut methods = HashMap::new();
                 for method in stmt_methods {
@@ -74,10 +108,13 @@ impl Interpreter for Stmt {
                     methods.insert(method.name.lexeme.to_owned(), function);
                 }
 
-                environment.assign(
-                    name,
-                    CallableLiteral(Callable::new_class(name.lexeme.to_owned(), methods)),
-                )?;
+                if superclass.is_some() {
+                    environment.del_scope();
+                }
+
+                let class = Callable::new_class(name.lexeme.to_owned(), superclass, methods);
+
+                environment.assign(name, CallableLiteral(class))?;
             }
             Stmt::Expression { expression } => {
                 expression.interpret(environment)?;
@@ -265,6 +302,36 @@ impl Interpreter for Expr {
                 }
                 _ => Err((name.clone(), "Only instances have fields.".into())),
             },
+            ExprKind::Super { keyword: _, method } => {
+                let distance = *environment.locals.get(&self.0).unwrap();
+                let mut superclass = match environment.get_at(distance, "super").unwrap() {
+                    CallableLiteral(Callable {
+                        arity: _,
+                        parameters: _,
+                        kind,
+                    }) => match kind {
+                        CallableKind::Class(c) => c,
+                        _ => panic!("'super' did not resolve to a class."),
+                    },
+                    _ => panic!("'super' did not resolve to a callable literal."),
+                };
+
+                let object = match environment.get_at(distance - 1, "this").unwrap() {
+                    InstanceLiteral(instance) => instance,
+                    _ => panic!("Subclass did not resolve to an instance."),
+                };
+
+                match superclass.find_method(&method.lexeme) {
+                    Some(mut method) => {
+                        method.bind(object);
+                        Ok(CallableLiteral(method))
+                    }
+                    _ => Err((
+                        method.clone(),
+                        format!("Undefined property '{}'.", method.lexeme).into(),
+                    )),
+                }
+            }
             ExprKind::This { keyword } => lookup_variable(keyword, self.0, environment),
             ExprKind::Unary { operator, right } => {
                 let right = right.interpret(environment)?;

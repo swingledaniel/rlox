@@ -18,6 +18,7 @@ pub enum FunctionType {
 
 pub enum ClassType {
     Class,
+    Subclass,
 }
 
 trait Resolver {
@@ -51,12 +52,42 @@ impl Resolver for Stmt {
                 end_scope(environment);
                 Ok(())
             }
-            Stmt::Class { name, methods } => {
-                let enclosing_class = ClassType::Class;
-                class_stack.push(enclosing_class);
+            Stmt::Class {
+                name,
+                superclass,
+                methods,
+            } => {
+                class_stack.push(ClassType::Class);
 
                 declare(name, environment, had_error);
                 define(name, environment);
+
+                if let Some(expr) = superclass {
+                    class_stack.pop();
+                    class_stack.push(ClassType::Subclass);
+
+                    let exprkind = &expr.1;
+                    match exprkind {
+                        ExprKind::Variable {
+                            name: superclass_name,
+                        } => {
+                            if name.lexeme == superclass_name.lexeme {
+                                error(name.line, &("A class can't inherit from itself.".into()));
+                                *had_error = true;
+                            }
+                        }
+                        _ => panic!("Superclass was not a variable"),
+                    }
+
+                    expr.resolve(environment, function_stack, class_stack, had_error)?;
+
+                    begin_scope(environment);
+                    environment
+                        .scopes
+                        .last_mut()
+                        .unwrap()
+                        .insert("super".to_string(), true);
+                }
 
                 begin_scope(environment);
                 environment
@@ -77,6 +108,10 @@ impl Resolver for Stmt {
                 }
 
                 end_scope(environment);
+
+                if superclass.is_some() {
+                    end_scope(environment);
+                }
 
                 class_stack.pop();
                 Ok(())
@@ -201,6 +236,21 @@ impl Resolver for Expr {
             ExprKind::Set { object, name: _, value } => {
                 value.resolve(environment, function_stack, class_stack, had_error)?;
                 object.resolve(environment, function_stack, class_stack, had_error)
+            }
+            ExprKind::Super { keyword, method: _ } => {
+                match class_stack.last() {
+                    None => {
+                        error(keyword.line, &("Can't use 'super' outside of a class.".into()));
+                        *had_error = true;
+                    }
+                    Some(ClassType::Class) => {
+                        error(keyword.line, &("Can't use 'super' in a class with no superclass.".into()));
+                        *had_error = true;
+                    }
+                    _ => {}
+                }
+
+                resolve_local(self.0, keyword, environment)
             }
             ExprKind::This { keyword } => {
                 if class_stack.is_empty() {

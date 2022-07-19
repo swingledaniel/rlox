@@ -94,6 +94,10 @@ impl fmt::Display for Expr {
                 name,
                 value,
             } => write!(f, "{object}.{name} = {value}"),
+            ExprKind::Super {
+                keyword: _,
+                method: _,
+            } => write!(f, "super"),
             ExprKind::This { keyword: _ } => write!(f, "this"),
             ExprKind::Unary { operator, right } => {
                 write!(f, "({operator} {right})")
